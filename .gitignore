@@ -1,0 +1,20 @@
+# Config files with real credentials
+forticonfig
+*.backup
+*.old
+
+# Temporary files
+/tmp/forti_expect.exp
+*.tmp
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE files
+.vscode/
+.idea/
+
+# Log files
+*.log

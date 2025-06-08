@@ -1,0 +1,182 @@
+#!/bin/bash
+
+# FortiVPN Setup Wizard
+# Interactive setup for FortiVPN Auto-Connect
+
+set -e
+
+CONFIG_DIR="$HOME/.fortivpn"
+CONFIG_FILE="$CONFIG_DIR/forticonfig"
+
+echo "🔧 FortiVPN Auto-Connect Setup Wizard"
+echo "======================================"
+echo ""
+
+# Create config directory if it doesn't exist
+if [[ ! -d "$CONFIG_DIR" ]]; then
+    echo "📁 Creating configuration directory: $CONFIG_DIR"
+    mkdir -p "$CONFIG_DIR"
+fi
+
+# Function to show current status
+show_status() {
+    echo "📊 Current Setup Status:"
+    echo "========================"
+    
+    # Check config file
+    if [[ -f "$CONFIG_FILE" ]]; then
+        echo "✅ Configuration file exists: $CONFIG_FILE"
+        echo "   Current settings:"
+        cat "$CONFIG_FILE" | sed 's/^/   /'
+    else
+        echo "❌ Configuration file missing: $CONFIG_FILE"
+    fi
+    
+    # Check openfortivpn
+    if command -v openfortivpn >/dev/null 2>&1; then
+        echo "✅ openfortivpn is installed"
+    else
+        echo "❌ openfortivpn is not installed"
+        echo "   Install with: brew install openfortivpn"
+    fi
+    
+    # Check expect
+    if command -v expect >/dev/null 2>&1; then
+        echo "✅ expect is installed"
+    else
+        echo "❌ expect is not installed"
+        echo "   Install with: brew install expect"
+    fi
+    
+    echo ""
+}
+
+# Function to configure VPN settings
+configure_vpn() {
+    echo "🔧 VPN Configuration Setup"
+    echo "=========================="
+    echo ""
+    
+    echo "Please enter your VPN connection details:"
+    echo ""
+    
+    read -p "VPN Server (host): " vpn_host
+    read -p "Port (default 443): " vpn_port
+    vpn_port=${vpn_port:-443}
+    read -p "Username: " vpn_username
+    read -s -p "Password: " vpn_password
+    echo ""
+    read -p "Trusted Certificate Hash (optional): " vpn_cert
+    
+    echo ""
+    echo "📝 Creating configuration file..."
+    
+    cat > "$CONFIG_FILE" << CONFIGEOF
+host = $vpn_host
+port = $vpn_port
+username = $vpn_username
+password = $vpn_password
+CONFIGEOF
+    
+    if [[ -n "$vpn_cert" ]]; then
+        echo "trusted-cert = $vpn_cert" >> "$CONFIG_FILE"
+    fi
+    
+    # Set secure permissions
+    chmod 600 "$CONFIG_FILE"
+    
+    echo "✅ Configuration saved to: $CONFIG_FILE"
+    echo "🔒 File permissions set to 600 (owner read/write only)"
+    echo ""
+}
+
+# Function to install dependencies
+install_dependencies() {
+    echo "📦 Installing Dependencies"
+    echo "========================="
+    echo ""
+    
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "❌ Homebrew is not installed"
+        echo "Please install Homebrew first: https://brew.sh"
+        return 1
+    fi
+    
+    echo "Installing openfortivpn and expect..."
+    if brew install openfortivpn expect; then
+        echo "✅ Dependencies installed successfully"
+    else
+        echo "❌ Failed to install dependencies"
+        return 1
+    fi
+    echo ""
+}
+
+# Parse command line arguments
+case "${1:-}" in
+    --status)
+        show_status
+        exit 0
+        ;;
+    --configure)
+        configure_vpn
+        exit 0
+        ;;
+    --install-deps)
+        install_dependencies
+        exit 0
+        ;;
+    --help)
+        echo "FortiVPN Setup Wizard"
+        echo ""
+        echo "Usage: fortivpn-setup [OPTION]"
+        echo ""
+        echo "Options:"
+        echo "  --status        Show current setup status"
+        echo "  --configure     Configure VPN settings"
+        echo "  --install-deps  Install dependencies"
+        echo "  --help          Show this help"
+        echo ""
+        echo "Run without options for interactive setup"
+        exit 0
+        ;;
+esac
+
+# Interactive mode
+echo "What would you like to do?"
+echo ""
+echo "1) Show current status"
+echo "2) Configure VPN settings"
+echo "3) Install dependencies"
+echo "4) Complete setup (all steps)"
+echo "0) Exit"
+echo ""
+
+read -p "Enter your choice [0-4]: " choice
+echo ""
+
+case $choice in
+    1)
+        show_status
+        ;;
+    2)
+        configure_vpn
+        ;;
+    3)
+        install_dependencies
+        ;;
+    4)
+        echo "🚀 Running complete setup..."
+        echo ""
+        install_dependencies
+        configure_vpn
+        show_status
+        echo "✅ Setup complete! Run 'fortivpn-autoconnect' to connect."
+        ;;
+    0)
+        echo "👋 Setup wizard exiting"
+        ;;
+    *)
+        echo "❌ Invalid choice. Please enter 0-4."
+        ;;
+esac

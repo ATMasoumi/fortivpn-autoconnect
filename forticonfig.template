@@ -1,0 +1,5 @@
+host = your-vpn-server.com
+port = 4443
+username = your.username
+password = your_password
+trusted-cert = your_certificate_hash
