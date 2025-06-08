@@ -20,7 +20,7 @@ The easiest way to install and use FortiVPN Auto-Connect:
 
 ```bash
 # 1. Add the tap
-brew tap amintorabi/fortivpn
+brew tap ATMasoumi/fortivpn
 
 # 2. Install the tool
 brew install fortivpn-autoconnect
@@ -48,7 +48,7 @@ fortivpn-autoconnect
 **Time:** 20-45 minutes setup + 2-5 minutes per connection
 
 ### After (Automated Process):
-1. `brew tap amintorabi/fortivpn`
+1. `brew tap ATMasoumi/fortivpn`
 2. `brew install fortivpn-autoconnect`
 3. `fortivpn-setup` (guided configuration)
 
@@ -60,7 +60,7 @@ If you prefer not to use Homebrew:
 
 ```bash
 # Clone the repository
-git clone https://github.com/amintorabi/fortivpn-autoconnect.git
+git clone https://github.com/ATMasoumi/fortivpn-autoconnect.git
 cd fortivpn-autoconnect
 
 # Install dependencies
@@ -224,8 +224,8 @@ MIT License - see LICENSE file for details.
 
 ## 🙋‍♂️ Support
 
-- **Issues**: [GitHub Issues](https://github.com/amintorabi/fortivpn-autoconnect/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/amintorabi/fortivpn-autoconnect/discussions)
+- **Issues**: [GitHub Issues](https://github.com/ATMasoumi/fortivpn-autoconnect/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/ATMasoumi/fortivpn-autoconnect/discussions)
 
 ## 🎉 Success Stories
 
@@ -235,6 +235,6 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Made with ❤️ by [Amin Torabi](https://github.com/amintorabi)**
+**Made with ❤️ by [Amin Torabi](https://github.com/ATMasoumi)**
 
 *Transform your VPN workflow today!*
