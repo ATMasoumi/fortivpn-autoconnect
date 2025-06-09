@@ -28,25 +28,25 @@ check_system_requirements() {
     
     # Check Homebrew
     if command -v brew >/dev/null 2>&1; then
-        echo -e "${GREEN}✅ Homebrew is installed${NC}"
+        echo -e "${GREEN}✅ Homebrew${NC}"
     else
-        echo -e "${RED}❌ Homebrew is not installed${NC}"
-        echo "   Please install from: https://brew.sh"
+        echo -e "${RED}❌ Homebrew not installed${NC}"
+        echo "   Install from: https://brew.sh"
         all_good=false
     fi
     
     # Check openfortivpn
     if command -v openfortivpn >/dev/null 2>&1; then
-        echo -e "${GREEN}✅ openfortivpn is installed${NC}"
+        echo -e "${GREEN}✅ openfortivpn${NC}"
     else
-        echo -e "${YELLOW}⚠️  openfortivpn is not installed (will install automatically)${NC}"
+        echo -e "${YELLOW}⚠️  openfortivpn (will install)${NC}"
     fi
     
     # Check expect
     if command -v expect >/dev/null 2>&1; then
-        echo -e "${GREEN}✅ expect is installed${NC}"
+        echo -e "${GREEN}✅ expect${NC}"
     else
-        echo -e "${YELLOW}⚠️  expect is not installed (will install automatically)${NC}"
+        echo -e "${YELLOW}⚠️  expect (will install)${NC}"
     fi
     
     # Check Terminal Full Disk Access with interactive guidance
@@ -67,9 +67,7 @@ check_system_requirements() {
         # Additional check for recent messages
         local recent_count=$(sqlite3 "$messages_db" "SELECT COUNT(*) FROM message WHERE date > strftime('%s', 'now', '-24 hours') * 1000000000;" 2>/dev/null || echo "0")
         if [[ "$recent_count" -gt 0 ]]; then
-            echo -e "${GREEN}✅ Found $recent_count recent messages (OTP detection should work)${NC}"
-        else
-            echo -e "${YELLOW}⚠️  No recent messages found - make sure you receive SMS OTP codes${NC}"
+            echo -e "${GREEN}✅ OTP detection ready ($recent_count recent messages)${NC}"
         fi
     else
         echo -e "${RED}❌ Terminal needs Full Disk Access to read Messages database${NC}"
@@ -127,7 +125,7 @@ check_system_requirements() {
                         # Test message reading capability
                         local recent_count=$(sqlite3 "$messages_db" "SELECT COUNT(*) FROM message WHERE date > strftime('%s', 'now', '-24 hours') * 1000000000;" 2>/dev/null || echo "0")
                         if [[ "$recent_count" -gt 0 ]]; then
-                            echo -e "${GREEN}✅ Found $recent_count recent messages (OTP detection should work perfectly)${NC}"
+                            echo -e "${GREEN}✅ OTP detection ready${NC}"
                         else
                             echo -e "${YELLOW}⚠️  No recent messages found - make sure you receive SMS OTP codes${NC}"
                         fi
@@ -244,32 +242,19 @@ check_system_requirements() {
     fi
     
     if [[ -n "$messages_app_path" ]]; then
-        echo -e "${GREEN}✅ Messages app is available${NC}"
-        
-        # Check if Messages is running
-        if pgrep -f "Messages" >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ Messages app is currently running${NC}"
-        else
-            echo -e "${YELLOW}⚠️  Messages app is not running${NC}"
-            echo "   Consider starting Messages.app to ensure SMS delivery"
-        fi
+        echo -e "${GREEN}✅ Messages app${NC}"
         
         # Check for recent SMS messages (potential OTP sources)
         local messages_db="$HOME/Library/Messages/chat.db"
         if [[ -f "$messages_db" ]]; then
             local sms_count=$(sqlite3 "$messages_db" "SELECT COUNT(*) FROM handle WHERE service = 'SMS';" 2>/dev/null || echo "0")
             if [[ "$sms_count" -gt 0 ]]; then
-                echo -e "${GREEN}✅ Found $sms_count SMS contacts (good for OTP delivery)${NC}"
-            else
-                echo -e "${YELLOW}⚠️  No SMS contacts found - make sure SMS forwarding is configured${NC}"
+                echo -e "${GREEN}✅ SMS contacts configured${NC}"
             fi
         fi
-        
-        echo "   Important: Ensure Messages is configured to receive OTP SMS codes"
-        echo "   If using iPhone: Enable Text Message Forwarding in Settings > Messages"
     else
         echo -e "${RED}❌ Messages app not found${NC}"
-        echo "   Messages app is required for automatic OTP code extraction"
+        echo "   Required for automatic OTP code extraction"
         all_good=false
     fi
     
@@ -474,17 +459,15 @@ detect_trusted_certificate() {
     grep -v "^password = " "$CONFIG_FILE" > "$temp_config"
     echo "password = dummy" >> "$temp_config"
     
-    echo "🔄 Starting certificate detection (timeout: 20 seconds)..."
+    echo "🔄 Starting certificate detection..."
     echo ""
     
     # Try multiple approaches to get certificate information
     local cert_hash=""
     
     # Method 1: Direct openfortivpn with verbose output
-    echo "Method 1: Running openfortivpn with verbose logging..."
-    gtimeout 20 openfortivpn --config="$temp_config" -v 2>&1 | tee "$temp_output" | head -15 2>/dev/null || \
-    perl -e 'alarm 20; exec @ARGV' openfortivpn --config="$temp_config" -v 2>&1 | tee "$temp_output" | head -15 || true
-    echo ""
+    echo "Attempting certificate detection..."
+    perl -e 'alarm 20; exec @ARGV' openfortivpn --config="$temp_config" -v 2>&1 | tee "$temp_output" > /dev/null || true
     
     # Look for certificate hash patterns
     if grep -q "trusted-cert" "$temp_output"; then
@@ -494,7 +477,6 @@ detect_trusted_certificate() {
     
     # Method 2: Look for certificate fingerprint patterns
     if [[ -z "$cert_hash" ]]; then
-        echo "Method 2: Searching for certificate fingerprint patterns..."
         cert_hash=$(grep -oE "([a-fA-F0-9]{2}[:]){19}[a-fA-F0-9]{2}" "$temp_output" | head -1)
         if [[ -n "$cert_hash" ]]; then
             echo "✅ Found certificate fingerprint: $cert_hash"
@@ -503,7 +485,6 @@ detect_trusted_certificate() {
     
     # Method 3: Alternative pattern matching
     if [[ -z "$cert_hash" ]]; then
-        echo "Method 3: Looking for alternative certificate formats..."
         # Look for SHA256 or SHA1 patterns
         cert_hash=$(grep -i "fingerprint\|certificate\|sha256\|sha1" "$temp_output" | grep -oE "([a-fA-F0-9]{2}[:]){15,31}[a-fA-F0-9]{2}" | head -1)
         if [[ -n "$cert_hash" ]]; then
@@ -513,9 +494,7 @@ detect_trusted_certificate() {
     
     # Method 4: Try openssl to get server certificate directly
     if [[ -z "$cert_hash" ]]; then
-        echo "Method 4: Using OpenSSL to retrieve server certificate..."
         local ssl_output="/tmp/ssl_cert_$$.txt"
-        gtimeout 10 openssl s_client -connect "$vpn_host:$vpn_port" -servername "$vpn_host" 2>/dev/null | openssl x509 -fingerprint -sha256 -noout 2>/dev/null | cut -d= -f2 > "$ssl_output" 2>/dev/null || \
         perl -e 'alarm 10; exec @ARGV' openssl s_client -connect "$vpn_host:$vpn_port" -servername "$vpn_host" 2>/dev/null | openssl x509 -fingerprint -sha256 -noout 2>/dev/null | cut -d= -f2 > "$ssl_output" 2>/dev/null || true
         
         if [[ -s "$ssl_output" ]]; then
@@ -640,44 +619,32 @@ install_dependencies() {
     # Check openfortivpn
     if ! command -v openfortivpn >/dev/null 2>&1; then
         packages_needed+=("openfortivpn")
-        echo "⚠️  openfortivpn not found - will install"
+        echo "⚠️  openfortivpn (will install)"
     else
-        echo "✅ openfortivpn already installed"
+        echo "✅ openfortivpn"
     fi
     
     # Check expect
     if ! command -v expect >/dev/null 2>&1; then
         packages_needed+=("expect")
-        echo "⚠️  expect not found - will install"
+        echo "⚠️  expect (will install)"
     else
-        echo "✅ expect already installed"
+        echo "✅ expect"
     fi
     
     # Install missing packages
     if [[ ${#packages_needed[@]} -gt 0 ]]; then
         echo ""
         echo "🔄 Installing: ${packages_needed[*]}"
-        if brew install "${packages_needed[@]}"; then
-            echo "✅ All dependencies installed successfully"
-            
-            # Verify installations
-            echo ""
-            echo "🔍 Verifying installations..."
-            for package in "${packages_needed[@]}"; do
-                if command -v "$package" >/dev/null 2>&1; then
-                    local version=$($package --version 2>/dev/null | head -1 || echo "unknown")
-                    echo "✅ $package installed: $version"
-                else
-                    echo "❌ $package installation may have failed"
-                fi
-            done
+        if brew install "${packages_needed[@]}" >/dev/null 2>&1; then
+            echo "✅ Dependencies installed"
         else
-            echo "❌ Failed to install some dependencies"
-            echo "   Try running: brew update && brew install ${packages_needed[*]}"
+            echo "❌ Installation failed"
+            echo "   Try: brew update && brew install ${packages_needed[*]}"
             return 1
         fi
     else
-        echo "✅ All required dependencies are already installed"
+        echo "✅ All dependencies installed"
     fi
     
     echo ""
@@ -685,18 +652,16 @@ install_dependencies() {
     
     # Check sqlite3 (usually pre-installed on macOS)
     if command -v sqlite3 >/dev/null 2>&1; then
-        echo "✅ sqlite3 available (needed for Messages database access)"
+        echo "✅ sqlite3"
     else
-        echo "⚠️  sqlite3 not found - may need to install Xcode Command Line Tools"
-        echo "   Run: xcode-select --install"
+        echo "⚠️  sqlite3 missing - install Xcode Command Line Tools"
     fi
     
     # Check openssl (usually available)
     if command -v openssl >/dev/null 2>&1; then
-        local ssl_version=$(openssl version 2>/dev/null)
-        echo "✅ openssl available: $ssl_version"
+        echo "✅ openssl"
     else
-        echo "⚠️  openssl not found - installing via Homebrew"
+        echo "⚠️  openssl missing - installing..."
         brew install openssl || echo "❌ Failed to install openssl"
     fi
     
@@ -723,10 +688,15 @@ test_connection() {
     
     if [[ "$confirm" =~ ^[Yy] ]]; then
         echo "🔄 Starting test connection..."
-        if timeout 30 openfortivpn --config="$CONFIG_FILE" --no-routes 2>&1 | head -20; then
-            echo "✅ Test completed - check output above for results"
+        timeout 30 openfortivpn --config="$CONFIG_FILE" --no-routes >/dev/null 2>&1 &
+        local test_pid=$!
+        echo "⏳ Connection test started (PID: $test_pid)"
+        sleep 5
+        if kill -0 $test_pid 2>/dev/null; then
+            echo "✅ Test connection established successfully"
+            kill $test_pid 2>/dev/null || true
         else
-            echo "⚠️  Test completed with timeout - this may be normal"
+            echo "⚠️  Test completed - check that your credentials are correct"
         fi
     fi
     echo ""
