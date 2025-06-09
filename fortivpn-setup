@@ -475,6 +475,16 @@ detect_trusted_certificate() {
         echo "✅ Found certificate via trusted-cert output: $cert_hash"
     fi
     
+    # Method 1b: Look for openfortivpn error message with exact format
+    if [[ -z "$cert_hash" ]]; then
+        # Look for the specific error message that tells us the exact format
+        error_cert=$(grep -o "trusted-cert = [a-fA-F0-9]*" "$temp_output" | head -1 | cut -d' ' -f3)
+        if [[ -n "$error_cert" ]]; then
+            cert_hash="$error_cert"
+            echo "✅ Found certificate from openfortivpn error message: $cert_hash"
+        fi
+    fi
+    
     # Method 2: Look for certificate fingerprint patterns
     if [[ -z "$cert_hash" ]]; then
         cert_hash=$(grep -oE "([a-fA-F0-9]{2}[:]){19}[a-fA-F0-9]{2}" "$temp_output" | head -1)
@@ -506,29 +516,43 @@ detect_trusted_certificate() {
     
     # Process the certificate if found
     if [[ -n "$cert_hash" ]]; then
-        echo ""
-        echo "🎉 Successfully detected trusted certificate!"
-        echo "   Certificate: $cert_hash"
+        # Check if certificate is already in correct format (no colons, lowercase)
+        if [[ "$cert_hash" =~ ^[a-f0-9]{64}$ ]]; then
+            # Already in correct format
+            cert_hash_clean="$cert_hash"
+            echo ""
+            echo "🎉 Successfully detected trusted certificate!"
+            echo "   Certificate (openfortivpn format): $cert_hash_clean"
+        else
+            # Convert certificate to openfortivpn format (remove colons, lowercase)
+            cert_hash_clean=$(echo "$cert_hash" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+            echo ""
+            echo "🎉 Successfully detected trusted certificate!"
+            echo "   Raw certificate: $cert_hash"
+            echo "   OpenFortiVPN format: $cert_hash_clean"
+        fi
+        
         echo ""
         echo "📝 Adding certificate to configuration..."
         
         # Check if certificate already exists in config
         if grep -q "trusted-cert = " "$CONFIG_FILE"; then
+            current_cert=$(grep "trusted-cert = " "$CONFIG_FILE" | cut -d' ' -f3)
             echo "⚠️  Configuration already contains a trusted certificate."
-            echo "   Current: $(grep "trusted-cert = " "$CONFIG_FILE" | cut -d' ' -f3)"
-            echo "   New:     $cert_hash"
+            echo "   Current: $current_cert"
+            echo "   New:     $cert_hash_clean"
             echo ""
             read -p "Replace existing certificate? (y/N): " replace_cert
             if [[ "$replace_cert" =~ ^[Yy] ]]; then
                 # Replace existing certificate
-                sed -i '' "s/trusted-cert = .*/trusted-cert = $cert_hash/" "$CONFIG_FILE"
+                sed -i '' "s/trusted-cert = .*/trusted-cert = $cert_hash_clean/" "$CONFIG_FILE"
                 echo "✅ Certificate replaced in configuration"
             else
                 echo "⚠️  Keeping existing certificate"
             fi
         else
             # Add new certificate to config file
-            echo "trusted-cert = $cert_hash" >> "$CONFIG_FILE"
+            echo "trusted-cert = $cert_hash_clean" >> "$CONFIG_FILE"
             echo "✅ Certificate added to configuration"
         fi
         
