@@ -47,13 +47,29 @@ fi
 # Check config file exists
 if [[ ! -f "$CONFIG_FILE" ]]; then
     echo -e "${RED}❌ Config file not found: $CONFIG_FILE${NC}"
+    echo ""
+    echo "🔧 Starting automatic VPN configuration setup..."
+    echo ""
+    
     if [[ "$SCRIPT_DIR" =~ /usr/local/bin ]] || [[ "$SCRIPT_DIR" =~ /opt/homebrew/bin ]]; then
-        echo ""
-        echo "🔧 Run 'fortivpn-setup' to configure your VPN settings"
+        # Homebrew installation - run setup from the same directory
+        if [[ -f "$SCRIPT_DIR/fortivpn-setup" ]]; then
+            exec "$SCRIPT_DIR/fortivpn-setup"
+        else
+            echo -e "${RED}❌ Setup script not found: $SCRIPT_DIR/fortivpn-setup${NC}"
+            echo "Please run 'fortivpn-setup' manually to configure your VPN settings"
+            exit 1
+        fi
     else
-        echo "Please create the config file with your VPN credentials"
+        # Development or manual installation - run setup from script directory
+        if [[ -f "$SCRIPT_DIR/fortivpn-setup" ]]; then
+            exec "$SCRIPT_DIR/fortivpn-setup"
+        else
+            echo -e "${RED}❌ Setup script not found: $SCRIPT_DIR/fortivpn-setup${NC}"
+            echo "Please create the config file with your VPN credentials"
+            exit 1
+        fi
     fi
-    exit 1
 fi
 
 # Check OTP script exists

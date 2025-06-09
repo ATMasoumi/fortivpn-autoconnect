@@ -8,7 +8,146 @@ set -e
 CONFIG_DIR="$HOME/.fortivpn"
 CONFIG_FILE="$CONFIG_DIR/forticonfig"
 
-echo "🔧 FortiVPN Auto-Connect Setup Wizard"
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[0;37m'
+NC='\033[0m' # No Color
+
+# Function to check system requirements
+check_system_requirements() {
+    echo -e "${CYAN}🔍 Checking System Requirements${NC}"
+    echo "==============================="
+    echo ""
+    
+    local all_good=true
+    
+    # Check Homebrew
+    if command -v brew >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ Homebrew is installed${NC}"
+    else
+        echo -e "${RED}❌ Homebrew is not installed${NC}"
+        echo "   Please install from: https://brew.sh"
+        all_good=false
+    fi
+    
+    # Check openfortivpn
+    if command -v openfortivpn >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ openfortivpn is installed${NC}"
+    else
+        echo -e "${YELLOW}⚠️  openfortivpn is not installed (will install automatically)${NC}"
+    fi
+    
+    # Check expect
+    if command -v expect >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ expect is installed${NC}"
+    else
+        echo -e "${YELLOW}⚠️  expect is not installed (will install automatically)${NC}"
+    fi
+    
+    # Check Terminal Full Disk Access
+    echo "🔐 Checking system permissions..."
+    local messages_db="$HOME/Library/Messages/chat.db"
+    if [[ -f "$messages_db" ]] && sqlite3 "$messages_db" "SELECT COUNT(*) FROM message LIMIT 1;" >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ Terminal has Full Disk Access (can read Messages database)${NC}"
+        
+        # Additional check for recent messages
+        local recent_count=$(sqlite3 "$messages_db" "SELECT COUNT(*) FROM message WHERE date > strftime('%s', 'now', '-24 hours') * 1000000000;" 2>/dev/null || echo "0")
+        if [[ "$recent_count" -gt 0 ]]; then
+            echo -e "${GREEN}✅ Found $recent_count recent messages (OTP detection should work)${NC}"
+        else
+            echo -e "${YELLOW}⚠️  No recent messages found - make sure you receive SMS OTP codes${NC}"
+        fi
+    else
+        echo -e "${RED}❌ Terminal needs Full Disk Access to read Messages database${NC}"
+        echo "   Steps to fix:"
+        echo "   1. Open System Preferences/Settings > Privacy & Security > Full Disk Access"
+        echo "   2. Click the '+' button and add Terminal.app"
+        echo "   3. Restart Terminal after enabling"
+        echo "   4. Test by running: sqlite3 ~/Library/Messages/chat.db '.tables'"
+        all_good=false
+    fi
+    
+    # Check Touch ID for sudo
+    echo "🔑 Checking Touch ID for sudo..."
+    local pam_tid_configured=false
+    local sudo_config="/etc/pam.d/sudo"
+    
+    if [[ -f "$sudo_config" ]] && grep -q "pam_tid.so" "$sudo_config" 2>/dev/null; then
+        echo -e "${GREEN}✅ Touch ID is configured for sudo${NC}"
+        pam_tid_configured=true
+    else
+        echo -e "${YELLOW}⚠️  Touch ID not configured for sudo${NC}"
+        echo "   To enable Touch ID for sudo:"
+        echo "   1. Run: sudo vim /etc/pam.d/sudo"
+        echo "   2. Add this line at the top: auth sufficient pam_tid.so"
+        echo "   3. Save and exit"
+        echo "   Alternative: Continue with password authentication"
+    fi
+    
+    # Test if current sudo session works
+    if sudo -n true 2>/dev/null; then
+        echo -e "${GREEN}✅ Current sudo session is active${NC}"
+    elif [[ "$pam_tid_configured" == true ]]; then
+        echo -e "${YELLOW}⚠️  Touch ID configured but sudo session not active${NC}"
+        echo "   This is normal - Touch ID will prompt when needed"
+    else
+        echo -e "${YELLOW}⚠️  No active sudo session (password will be required)${NC}"
+    fi
+    
+    # Check Messages app and configuration
+    echo "📱 Checking Messages app..."
+    if [[ -d "/Applications/Messages.app" ]]; then
+        echo -e "${GREEN}✅ Messages app is available${NC}"
+        
+        # Check if Messages is running
+        if pgrep -f "Messages" >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ Messages app is currently running${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Messages app is not running${NC}"
+            echo "   Consider starting Messages.app to ensure SMS delivery"
+        fi
+        
+        # Check for recent SMS messages (potential OTP sources)
+        local messages_db="$HOME/Library/Messages/chat.db"
+        if [[ -f "$messages_db" ]]; then
+            local sms_count=$(sqlite3 "$messages_db" "SELECT COUNT(*) FROM handle WHERE service = 'SMS';" 2>/dev/null || echo "0")
+            if [[ "$sms_count" -gt 0 ]]; then
+                echo -e "${GREEN}✅ Found $sms_count SMS contacts (good for OTP delivery)${NC}"
+            else
+                echo -e "${YELLOW}⚠️  No SMS contacts found - make sure SMS forwarding is configured${NC}"
+            fi
+        fi
+        
+        echo "   Important: Ensure Messages is configured to receive OTP SMS codes"
+        echo "   If using iPhone: Enable Text Message Forwarding in Settings > Messages"
+    else
+        echo -e "${RED}❌ Messages app not found${NC}"
+        echo "   Messages app is required for automatic OTP code extraction"
+        all_good=false
+    fi
+    
+    echo ""
+    
+    if [[ "$all_good" != true ]]; then
+        echo -e "${YELLOW}⚠️  Some requirements are missing. Please fix the issues above before continuing.${NC}"
+        echo ""
+        read -p "Continue anyway? (y/N): " continue_anyway
+        if [[ ! "$continue_anyway" =~ ^[Yy] ]]; then
+            echo -e "${RED}❌ Setup cancelled. Please fix the requirements and try again.${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✅ All system requirements are met!${NC}"
+    fi
+    echo ""
+}
+
+echo -e "${CYAN}🔧 FortiVPN Auto-Connect Setup Wizard${NC}"
 echo "======================================"
 echo ""
 
@@ -16,6 +155,11 @@ echo ""
 if [[ ! -d "$CONFIG_DIR" ]]; then
     echo "📁 Creating configuration directory: $CONFIG_DIR"
     mkdir -p "$CONFIG_DIR"
+fi
+
+# Run system requirements check on startup unless --skip-check is passed
+if [[ "${1:-}" != "--skip-check" ]] && [[ "${1:-}" != "--status" ]] && [[ "${1:-}" != "--help" ]]; then
+    check_system_requirements
 fi
 
 # Function to show current status
@@ -74,17 +218,72 @@ configure_vpn() {
     echo "Please enter your VPN connection details:"
     echo ""
     
-    read -p "VPN Server (host): " vpn_host
-    read -p "Port (default 443): " vpn_port
-    vpn_port=${vpn_port:-443}
-    read -p "Username: " vpn_username
-    read -s -p "Password: " vpn_password
+    # Validate server hostname/IP
+    while true; do
+        read -p "VPN Server (hostname or IP): " vpn_host
+        if [[ -n "$vpn_host" ]]; then
+            # Basic validation - check if it looks like a valid hostname or IP
+            if [[ "$vpn_host" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+                break
+            else
+                echo "❌ Invalid server format. Please enter a valid hostname or IP address."
+            fi
+        else
+            echo "❌ Server address cannot be empty."
+        fi
+    done
+    
+    # Port with smart defaults
     echo ""
-    read -p "Trusted Certificate Hash (optional): " vpn_cert
+    echo "Common FortiGate ports:"
+    echo "• 443 (HTTPS, most common)"
+    echo "• 4443 (Alternative HTTPS)"
+    echo "• 10443 (Alternative)"
+    echo ""
+    
+    while true; do
+        read -p "Port (default: 443): " vpn_port
+        vpn_port=${vpn_port:-443}
+        
+        # Validate port number
+        if [[ "$vpn_port" =~ ^[0-9]+$ ]] && [ "$vpn_port" -ge 1 ] && [ "$vpn_port" -le 65535 ]; then
+            break
+        else
+            echo "❌ Invalid port. Please enter a number between 1 and 65535."
+        fi
+    done
+    
+    # Username validation
+    while true; do
+        read -p "Username: " vpn_username
+        if [[ -n "$vpn_username" ]]; then
+            break
+        else
+            echo "❌ Username cannot be empty."
+        fi
+    done
+    
+    # Password (with confirmation option)
+    while true; do
+        read -s -p "Password: " vpn_password
+        echo ""
+        if [[ -n "$vpn_password" ]]; then
+            read -s -p "Confirm password: " vpn_password_confirm
+            echo ""
+            if [[ "$vpn_password" == "$vpn_password_confirm" ]]; then
+                break
+            else
+                echo "❌ Passwords don't match. Please try again."
+            fi
+        else
+            echo "❌ Password cannot be empty."
+        fi
+    done
     
     echo ""
-    echo "📝 Creating configuration file..."
+    echo "📝 Creating initial configuration file..."
     
+    # Create initial config without trusted certificate
     cat > "$CONFIG_FILE" << EOF
 host = $vpn_host
 port = $vpn_port
@@ -92,15 +291,162 @@ username = $vpn_username
 password = $vpn_password
 EOF
     
-    if [[ -n "$vpn_cert" ]]; then
-        echo "trusted-cert = $vpn_cert" >> "$CONFIG_FILE"
-    fi
-    
     # Set secure permissions
     chmod 600 "$CONFIG_FILE"
     
-    echo "✅ Configuration saved to: $CONFIG_FILE"
+    echo "✅ Initial configuration saved to: $CONFIG_FILE"
     echo "🔒 File permissions set to 600 (owner read/write only)"
+    echo ""
+    
+    # Now attempt to auto-detect trusted certificate
+    echo "🔍 Auto-detecting trusted certificate..."
+    echo "This will make a test connection to retrieve the server certificate."
+    echo ""
+    
+    detect_trusted_certificate
+}
+
+# Function to detect trusted certificate automatically
+detect_trusted_certificate() {
+    echo "🔐 Attempting to auto-detect trusted certificate..."
+    
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo "❌ Configuration file not found. Please configure VPN settings first."
+        return 1
+    fi
+    
+    # Read config to show connection attempt details
+    local vpn_host=$(grep "^host = " "$CONFIG_FILE" | cut -d' ' -f3)
+    local vpn_port=$(grep "^port = " "$CONFIG_FILE" | cut -d' ' -f3)
+    
+    echo "🔄 Testing connection to: $vpn_host:$vpn_port"
+    echo "⚠️  This will attempt to connect and capture the certificate information."
+    echo "   The connection will likely fail with authentication - this is expected!"
+    echo ""
+    
+    # Create a temporary output file
+    local temp_output="/tmp/fortivpn_cert_detect_$$.log"
+    local temp_config="/tmp/fortivpn_config_test_$$.conf"
+    
+    # Create a temporary config without password for certificate detection
+    grep -v "^password = " "$CONFIG_FILE" > "$temp_config"
+    echo "password = dummy" >> "$temp_config"
+    
+    echo "🔄 Starting certificate detection (timeout: 20 seconds)..."
+    echo ""
+    
+    # Try multiple approaches to get certificate information
+    local cert_hash=""
+    
+    # Method 1: Direct openfortivpn with verbose output
+    echo "Method 1: Running openfortivpn with verbose logging..."
+    timeout 20 openfortivpn --config="$temp_config" -v 2>&1 | tee "$temp_output" | head -15 || true
+    echo ""
+    
+    # Look for certificate hash patterns
+    if grep -q "trusted-cert" "$temp_output"; then
+        cert_hash=$(grep "trusted-cert" "$temp_output" | sed -n 's/.*trusted-cert[[:space:]]*=[[:space:]]*\([a-fA-F0-9:]*\).*/\1/p' | head -1)
+        echo "✅ Found certificate via trusted-cert output: $cert_hash"
+    fi
+    
+    # Method 2: Look for certificate fingerprint patterns
+    if [[ -z "$cert_hash" ]]; then
+        echo "Method 2: Searching for certificate fingerprint patterns..."
+        cert_hash=$(grep -oE "([a-fA-F0-9]{2}[:]){19}[a-fA-F0-9]{2}" "$temp_output" | head -1)
+        if [[ -n "$cert_hash" ]]; then
+            echo "✅ Found certificate fingerprint: $cert_hash"
+        fi
+    fi
+    
+    # Method 3: Alternative pattern matching
+    if [[ -z "$cert_hash" ]]; then
+        echo "Method 3: Looking for alternative certificate formats..."
+        # Look for SHA256 or SHA1 patterns
+        cert_hash=$(grep -i "fingerprint\|certificate\|sha256\|sha1" "$temp_output" | grep -oE "([a-fA-F0-9]{2}[:]){15,31}[a-fA-F0-9]{2}" | head -1)
+        if [[ -n "$cert_hash" ]]; then
+            echo "✅ Found certificate via alternative pattern: $cert_hash"
+        fi
+    fi
+    
+    # Method 4: Try openssl to get server certificate directly
+    if [[ -z "$cert_hash" ]]; then
+        echo "Method 4: Using OpenSSL to retrieve server certificate..."
+        local ssl_output="/tmp/ssl_cert_$$.txt"
+        timeout 10 openssl s_client -connect "$vpn_host:$vpn_port" -servername "$vpn_host" 2>/dev/null | openssl x509 -fingerprint -sha256 -noout 2>/dev/null | cut -d= -f2 > "$ssl_output" || true
+        
+        if [[ -s "$ssl_output" ]]; then
+            cert_hash=$(cat "$ssl_output" | tr -d ' ')
+            echo "✅ Retrieved certificate via OpenSSL: $cert_hash"
+        fi
+        rm -f "$ssl_output"
+    fi
+    
+    # Process the certificate if found
+    if [[ -n "$cert_hash" ]]; then
+        echo ""
+        echo "🎉 Successfully detected trusted certificate!"
+        echo "   Certificate: $cert_hash"
+        echo ""
+        echo "📝 Adding certificate to configuration..."
+        
+        # Check if certificate already exists in config
+        if grep -q "trusted-cert = " "$CONFIG_FILE"; then
+            echo "⚠️  Configuration already contains a trusted certificate."
+            echo "   Current: $(grep "trusted-cert = " "$CONFIG_FILE" | cut -d' ' -f3)"
+            echo "   New:     $cert_hash"
+            echo ""
+            read -p "Replace existing certificate? (y/N): " replace_cert
+            if [[ "$replace_cert" =~ ^[Yy] ]]; then
+                # Replace existing certificate
+                sed -i '' "s/trusted-cert = .*/trusted-cert = $cert_hash/" "$CONFIG_FILE"
+                echo "✅ Certificate replaced in configuration"
+            else
+                echo "⚠️  Keeping existing certificate"
+            fi
+        else
+            # Add new certificate to config file
+            echo "trusted-cert = $cert_hash" >> "$CONFIG_FILE"
+            echo "✅ Certificate added to configuration"
+        fi
+        
+        echo ""
+        echo "📄 Updated configuration:"
+        cat "$CONFIG_FILE" | sed 's/^password = .*/password = [HIDDEN]/' | sed 's/^/   /'
+        echo ""
+        echo "🎯 Certificate auto-detection completed successfully!"
+        
+    else
+        echo ""
+        echo "⚠️  Could not auto-detect certificate from any method."
+        echo ""
+        echo "📋 Debug information:"
+        echo "   Connection log (last 20 lines):"
+        tail -20 "$temp_output" | sed 's/^/   /' 2>/dev/null || echo "   (No log output available)"
+        echo ""
+        echo "🔧 Possible solutions:"
+        echo "   1. Verify server address and port are correct"
+        echo "   2. Check if server is reachable: ping $vpn_host"
+        echo "   3. Test port connectivity: nc -zv $vpn_host $vpn_port"
+        echo "   4. Try connecting manually once to accept certificate:"
+        echo "      openfortivpn --config=\"$CONFIG_FILE\""
+        echo "   5. Add trusted-cert manually after first successful connection"
+        echo ""
+        
+        read -p "Continue setup anyway? (y/N): " continue_anyway
+        if [[ ! "$continue_anyway" =~ ^[Yy] ]]; then
+            echo "❌ Setup paused. You can:"
+            echo "   • Fix connectivity issues and try again"
+            echo "   • Run 'fortivpn-setup --configure' to reconfigure"
+            echo "   • Run a manual connection to get the certificate"
+            rm -f "$temp_output" "$temp_config"
+            return 1
+        else
+            echo "⚠️  Continuing without certificate. You may need to add it manually later."
+        fi
+    fi
+    
+    # Clean up temporary files
+    rm -f "$temp_output" "$temp_config"
     echo ""
 }
 
@@ -112,17 +458,106 @@ install_dependencies() {
     
     if ! command -v brew >/dev/null 2>&1; then
         echo "❌ Homebrew is not installed"
-        echo "Please install Homebrew first: https://brew.sh"
-        return 1
+        echo ""
+        echo "🍺 Installing Homebrew..."
+        echo "This will install Homebrew (the package manager for macOS)"
+        echo ""
+        read -p "Install Homebrew now? (y/N): " install_brew
+        
+        if [[ "$install_brew" =~ ^[Yy] ]]; then
+            echo "🔄 Installing Homebrew..."
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            
+            # Add Homebrew to PATH for current session
+            if [[ -f "/opt/homebrew/bin/brew" ]]; then
+                echo "✅ Homebrew installed (Apple Silicon Mac detected)"
+                export PATH="/opt/homebrew/bin:$PATH"
+            elif [[ -f "/usr/local/bin/brew" ]]; then
+                echo "✅ Homebrew installed (Intel Mac detected)"
+                export PATH="/usr/local/bin:$PATH"
+            else
+                echo "❌ Homebrew installation may have failed"
+                echo "   Please install manually from: https://brew.sh"
+                return 1
+            fi
+        else
+            echo "❌ Homebrew is required. Please install from: https://brew.sh"
+            return 1
+        fi
+    else
+        echo "✅ Homebrew is already installed"
     fi
     
-    echo "Installing openfortivpn and expect..."
-    if brew install openfortivpn expect; then
-        echo "✅ Dependencies installed successfully"
+    echo ""
+    echo "📦 Installing required packages..."
+    
+    local packages_needed=()
+    
+    # Check openfortivpn
+    if ! command -v openfortivpn >/dev/null 2>&1; then
+        packages_needed+=("openfortivpn")
+        echo "⚠️  openfortivpn not found - will install"
     else
-        echo "❌ Failed to install dependencies"
-        return 1
+        echo "✅ openfortivpn already installed"
     fi
+    
+    # Check expect
+    if ! command -v expect >/dev/null 2>&1; then
+        packages_needed+=("expect")
+        echo "⚠️  expect not found - will install"
+    else
+        echo "✅ expect already installed"
+    fi
+    
+    # Install missing packages
+    if [[ ${#packages_needed[@]} -gt 0 ]]; then
+        echo ""
+        echo "🔄 Installing: ${packages_needed[*]}"
+        if brew install "${packages_needed[@]}"; then
+            echo "✅ All dependencies installed successfully"
+            
+            # Verify installations
+            echo ""
+            echo "🔍 Verifying installations..."
+            for package in "${packages_needed[@]}"; do
+                if command -v "$package" >/dev/null 2>&1; then
+                    local version=$($package --version 2>/dev/null | head -1 || echo "unknown")
+                    echo "✅ $package installed: $version"
+                else
+                    echo "❌ $package installation may have failed"
+                fi
+            done
+        else
+            echo "❌ Failed to install some dependencies"
+            echo "   Try running: brew update && brew install ${packages_needed[*]}"
+            return 1
+        fi
+    else
+        echo "✅ All required dependencies are already installed"
+    fi
+    
+    echo ""
+    echo "🔧 Checking additional tools..."
+    
+    # Check sqlite3 (usually pre-installed on macOS)
+    if command -v sqlite3 >/dev/null 2>&1; then
+        echo "✅ sqlite3 available (needed for Messages database access)"
+    else
+        echo "⚠️  sqlite3 not found - may need to install Xcode Command Line Tools"
+        echo "   Run: xcode-select --install"
+    fi
+    
+    # Check openssl (usually available)
+    if command -v openssl >/dev/null 2>&1; then
+        local ssl_version=$(openssl version 2>/dev/null)
+        echo "✅ openssl available: $ssl_version"
+    else
+        echo "⚠️  openssl not found - installing via Homebrew"
+        brew install openssl || echo "❌ Failed to install openssl"
+    fi
+    
+    echo ""
+    echo "✅ Dependency installation completed!"
     echo ""
 }
 
@@ -155,13 +590,23 @@ test_connection() {
 
 # Function to show usage instructions
 show_usage() {
-    echo "📖 Usage Instructions"
+    echo -e "${BLUE}📖 Usage Instructions${NC}"
     echo "===================="
     echo ""
-    echo "After setup is complete, you can:"
+    echo -e "${CYAN}Command line options:${NC}"
+    echo "  fortivpn-setup                    # Interactive setup wizard"
+    echo "  fortivpn-setup --status           # Show current status"
+    echo "  fortivpn-setup --configure        # Configure VPN settings only"
+    echo "  fortivpn-setup --install-deps     # Install dependencies only"
+    echo "  fortivpn-setup --complete         # Run complete automated setup"
+    echo "  fortivpn-setup --skip-check       # Skip system requirements check"
+    echo "  fortivpn-setup --help             # Show this help"
+    echo ""
+    echo -e "${CYAN}After setup is complete, you can:${NC}"
     echo ""
     echo "1. Connect to VPN:"
-    echo "   fortivpn-autoconnect"
+    echo -e "${GREEN}   forti${NC}                          # Short command"
+    echo -e "${GREEN}   fortivpn-autoconnect${NC}          # Full command"
     echo ""
     echo "2. Check status (if needed):"
     echo "   fortivpn-setup --status"
@@ -172,30 +617,32 @@ show_usage() {
     echo "4. Install missing dependencies:"
     echo "   fortivpn-setup --install-deps"
     echo ""
-    echo "The auto-connect script will:"
-    echo "✓ Automatically detect 2FA prompts"
-    echo "✓ Extract OTP codes from Messages app"
-    echo "✓ Handle authentication with Touch ID"
-    echo "✓ Establish VPN tunnel"
+    echo -e "${CYAN}The auto-connect script will:${NC}"
+    echo -e "${GREEN}✓${NC} Automatically detect 2FA prompts"
+    echo -e "${GREEN}✓${NC} Extract OTP codes from Messages app"
+    echo -e "${GREEN}✓${NC} Handle authentication with Touch ID"
+    echo -e "${GREEN}✓${NC} Establish VPN tunnel"
+    echo -e "${GREEN}✓${NC} Show colored output for better visibility"
     echo ""
-    echo "Important: Make sure to:"
+    echo -e "${YELLOW}Important: Make sure to:${NC}"
     echo "• Grant Full Disk Access to Terminal in System Preferences"
-    echo "• Enable Touch ID for sudo authentication"
+    echo "• Enable Touch ID for sudo authentication (optional)"
     echo "• Have Messages app configured to receive OTP codes"
+    echo "• Configure SMS forwarding from iPhone if using iPhone"
     echo ""
 }
 
 # Main menu
 show_menu() {
-    echo "What would you like to do?"
+    echo -e "${CYAN}What would you like to do?${NC}"
     echo ""
-    echo "1) Show current status"
-    echo "2) Configure VPN settings"
-    echo "3) Install dependencies"
-    echo "4) Test connection"
-    echo "5) Show usage instructions"
-    echo "6) Complete setup (all steps)"
-    echo "0) Exit"
+    echo -e "${WHITE}1)${NC} Show current status"
+    echo -e "${WHITE}2)${NC} Configure VPN settings"
+    echo -e "${WHITE}3)${NC} Install dependencies"
+    echo -e "${WHITE}4)${NC} Test connection"
+    echo -e "${WHITE}5)${NC} Show usage instructions"
+    echo -e "${WHITE}6)${NC} Complete setup (all steps)"
+    echo -e "${WHITE}0)${NC} Exit"
     echo ""
 }
 
@@ -213,6 +660,10 @@ case "${1:-}" in
         install_dependencies
         exit 0
         ;;
+    --skip-check)
+        echo -e "${YELLOW}⚠️  Skipping system requirements check${NC}"
+        echo ""
+        ;;
     --help)
         show_usage
         exit 0
@@ -222,7 +673,7 @@ esac
 # Interactive mode
 if [[ "${1:-}" == "--complete" ]]; then
     # Automated complete setup
-    echo "🚀 Running complete setup..."
+    echo -e "${CYAN}🚀 Running complete setup...${NC}"
     echo ""
     install_dependencies
     configure_vpn
@@ -252,7 +703,7 @@ else
                 show_usage
                 ;;
             6)
-                echo "🚀 Running complete setup..."
+                echo -e "${CYAN}🚀 Running complete setup...${NC}"
                 echo ""
                 install_dependencies
                 configure_vpn
@@ -261,16 +712,17 @@ else
                 break
                 ;;
             0)
-                echo "👋 Setup wizard exiting"
+                echo -e "${GREEN}👋 Setup wizard exiting${NC}"
                 break
                 ;;
             *)
-                echo "❌ Invalid choice. Please enter 0-6."
+                echo -e "${RED}❌ Invalid choice. Please enter 0-6.${NC}"
                 echo ""
                 ;;
         esac
         
         if [[ $choice != 0 ]]; then
+            echo ""
             read -p "Press Enter to continue..."
             echo ""
         fi
