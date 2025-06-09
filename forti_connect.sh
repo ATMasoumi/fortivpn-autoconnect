@@ -139,6 +139,7 @@ while {1} {
                     puts "\n✅ OTP detected: $otp_code"
                     puts "🔑 Auto-entering OTP code..."
                     send "$otp_code\r"
+                    puts "🛑 Stopping OTP monitoring - code submitted"
                     break
                 } else {
                     if {$i < [expr $max_attempts - 1]} {
@@ -158,21 +159,40 @@ while {1} {
             # Continue to check connection result
             exp_continue
         }
+        "Authenticated" {
+            puts "\n🎉 Authentication successful!"
+            puts "🛑 Stopping OTP monitoring - authentication complete"
+            exp_continue
+        }
+        "Negotiation complete" {
+            puts "\n🔗 VPN negotiation complete"
+            puts "🛑 Stopping OTP monitoring - tunnel negotiation complete"
+            exp_continue
+        }
         "tunnel is up and running" {
             puts "\n🎉 Connected ✅"
             puts "🔒 VPN tunnel established - press Ctrl+C to disconnect"
+            puts "🛑 OTP monitoring stopped - connection established"
             interact
         }
         "Invalid token" {
             puts "\n❌ Invalid OTP token - may be expired"
+            puts "🛑 Stopping OTP monitoring - authentication failed"
             exit 1
         }
         "Login failed" {
             puts "\n❌ Login failed - check credentials"
+            puts "🛑 Stopping OTP monitoring - login failed"
             exit 1
         }
         "Could not authenticate to gateway" {
             puts "\n❌ Authentication failed - check credentials or OTP"
+            puts "🛑 Stopping OTP monitoring - authentication failed"
+            exit 1
+        }
+        "authentication failed" {
+            puts "\n❌ Authentication failed"
+            puts "🛑 Stopping OTP monitoring - authentication failed"
             exit 1
         }
         timeout {
