@@ -49,10 +49,19 @@ check_system_requirements() {
         echo -e "${YELLOW}⚠️  expect is not installed (will install automatically)${NC}"
     fi
     
-    # Check Terminal Full Disk Access
+    # Check Terminal Full Disk Access with interactive guidance
     echo "🔐 Checking system permissions..."
     local messages_db="$HOME/Library/Messages/chat.db"
-    if [[ -f "$messages_db" ]] && sqlite3 "$messages_db" "SELECT COUNT(*) FROM message LIMIT 1;" >/dev/null 2>&1; then
+    
+    check_full_disk_access() {
+        if [[ -f "$messages_db" ]] && sqlite3 "$messages_db" "SELECT COUNT(*) FROM message LIMIT 1;" >/dev/null 2>&1; then
+            return 0  # Has access
+        else
+            return 1  # No access
+        fi
+    }
+    
+    if check_full_disk_access; then
         echo -e "${GREEN}✅ Terminal has Full Disk Access (can read Messages database)${NC}"
         
         # Additional check for recent messages
@@ -64,12 +73,137 @@ check_system_requirements() {
         fi
     else
         echo -e "${RED}❌ Terminal needs Full Disk Access to read Messages database${NC}"
-        echo "   Steps to fix:"
-        echo "   1. Open System Preferences/Settings > Privacy & Security > Full Disk Access"
-        echo "   2. Click the '+' button and add Terminal.app"
-        echo "   3. Restart Terminal after enabling"
-        echo "   4. Test by running: sqlite3 ~/Library/Messages/chat.db '.tables'"
-        all_good=false
+        echo ""
+        echo -e "${YELLOW}📋 Full Disk Access is required for automatic OTP code detection.${NC}"
+        echo ""
+        echo "Would you like to be guided through enabling Full Disk Access?"
+        echo "1) Yes - Open settings and wait for me to enable it"
+        echo "2) No - Skip this requirement (manual OTP entry required)"
+        echo ""
+        read -p "Choose option (1/2): " fda_choice
+        
+        case "$fda_choice" in
+            1)
+                echo ""
+                echo -e "${CYAN}🔧 Opening Full Disk Access settings...${NC}"
+                echo ""
+                
+                # Open System Preferences to the Full Disk Access section
+                if [[ $(sw_vers -productVersion | cut -d. -f1) -ge 13 ]]; then
+                    # macOS 13+ (Ventura and later) - new System Settings
+                    open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+                else
+                    # macOS 12 and earlier - old System Preferences
+                    open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+                fi
+                
+                echo -e "${WHITE}📝 Please follow these steps in the settings window that just opened:${NC}"
+                echo ""
+                echo "   1. 🔓 Click the lock icon (bottom left) and authenticate"
+                echo "   2. ➕ Click the '+' button to add an application"
+                echo "   3. 📁 Navigate to Applications > Utilities > Terminal.app"
+                echo "   4. ✅ Select Terminal.app and click 'Open'"
+                echo "   5. ✅ Make sure Terminal.app appears in the list with a checkmark"
+                echo "   6. 🔄 Close System Preferences/Settings"
+                echo ""
+                echo -e "${YELLOW}⚠️  Important: You may need to restart Terminal after enabling access!${NC}"
+                echo ""
+                
+                # Wait for user to complete the process
+                echo "Please complete the steps above, then press ENTER to continue..."
+                read -r
+                
+                # Check again in a loop with retries
+                echo ""
+                echo "🔄 Checking Full Disk Access..."
+                local retry_count=0
+                local max_retries=5
+                
+                while [[ $retry_count -lt $max_retries ]]; do
+                    if check_full_disk_access; then
+                        echo -e "${GREEN}✅ Excellent! Terminal now has Full Disk Access${NC}"
+                        
+                        # Test message reading capability
+                        local recent_count=$(sqlite3 "$messages_db" "SELECT COUNT(*) FROM message WHERE date > strftime('%s', 'now', '-24 hours') * 1000000000;" 2>/dev/null || echo "0")
+                        if [[ "$recent_count" -gt 0 ]]; then
+                            echo -e "${GREEN}✅ Found $recent_count recent messages (OTP detection should work perfectly)${NC}"
+                        else
+                            echo -e "${YELLOW}⚠️  No recent messages found - make sure you receive SMS OTP codes${NC}"
+                        fi
+                        break
+                    else
+                        ((retry_count++))
+                        if [[ $retry_count -lt $max_retries ]]; then
+                            echo -e "${YELLOW}⚠️  Full Disk Access not detected yet (attempt $retry_count/$max_retries)${NC}"
+                            echo ""
+                            echo "If you haven't completed the steps yet, please do so now."
+                            echo "If you completed them, you might need to restart Terminal."
+                            echo ""
+                            echo "Options:"
+                            echo "1) I completed the steps - check again"
+                            echo "2) I need to restart Terminal - exit setup"
+                            echo "3) Skip this requirement for now"
+                            echo ""
+                            read -p "Choose option (1/2/3): " retry_choice
+                            
+                            case "$retry_choice" in
+                                1)
+                                    echo "🔄 Checking again..."
+                                    continue
+                                    ;;
+                                2)
+                                    echo ""
+                                    echo -e "${YELLOW}🔄 Please restart Terminal and run 'fortivpn-setup' again.${NC}"
+                                    echo "After restarting, the Full Disk Access should be detected."
+                                    exit 0
+                                    ;;
+                                3)
+                                    echo -e "${YELLOW}⚠️  Skipping Full Disk Access requirement${NC}"
+                                    echo "   Note: You'll need to enter OTP codes manually during connection"
+                                    all_good=false
+                                    break
+                                    ;;
+                                *)
+                                    echo "Invalid choice, checking again..."
+                                    continue
+                                    ;;
+                            esac
+                        else
+                            echo -e "${RED}❌ Full Disk Access still not detected after $max_retries attempts${NC}"
+                            echo ""
+                            echo "This might happen if:"
+                            echo "• You haven't restarted Terminal after enabling access"
+                            echo "• The wrong application was added (make sure it's Terminal.app)"
+                            echo "• System security settings need time to take effect"
+                            echo ""
+                            echo "You can:"
+                            echo "1) Restart Terminal and run setup again"
+                            echo "2) Continue without Full Disk Access (manual OTP entry)"
+                            echo ""
+                            read -p "Continue without Full Disk Access? (y/N): " continue_without
+                            if [[ "$continue_without" =~ ^[Yy] ]]; then
+                                echo -e "${YELLOW}⚠️  Continuing without Full Disk Access${NC}"
+                                echo "   Note: You'll need to enter OTP codes manually during connection"
+                                all_good=false
+                            else
+                                echo -e "${RED}❌ Setup cancelled. Please restart Terminal and try again.${NC}"
+                                exit 1
+                            fi
+                            break
+                        fi
+                    fi
+                done
+                ;;
+            2)
+                echo -e "${YELLOW}⚠️  Skipping Full Disk Access requirement${NC}"
+                echo "   Note: You'll need to enter OTP codes manually during connection"
+                all_good=false
+                ;;
+            *)
+                echo "Invalid choice. Skipping Full Disk Access requirement."
+                all_good=false
+                ;;
+        esac
     fi
     
     # Check Touch ID for sudo
@@ -101,7 +235,14 @@ check_system_requirements() {
     
     # Check Messages app and configuration
     echo "📱 Checking Messages app..."
-    if [[ -d "/Applications/Messages.app" ]]; then
+    local messages_app_path=""
+    if [[ -d "/System/Applications/Messages.app" ]]; then
+        messages_app_path="/System/Applications/Messages.app"
+    elif [[ -d "/Applications/Messages.app" ]]; then
+        messages_app_path="/Applications/Messages.app"
+    fi
+    
+    if [[ -n "$messages_app_path" ]]; then
         echo -e "${GREEN}✅ Messages app is available${NC}"
         
         # Check if Messages is running
@@ -340,7 +481,8 @@ detect_trusted_certificate() {
     
     # Method 1: Direct openfortivpn with verbose output
     echo "Method 1: Running openfortivpn with verbose logging..."
-    timeout 20 openfortivpn --config="$temp_config" -v 2>&1 | tee "$temp_output" | head -15 || true
+    gtimeout 20 openfortivpn --config="$temp_config" -v 2>&1 | tee "$temp_output" | head -15 2>/dev/null || \
+    perl -e 'alarm 20; exec @ARGV' openfortivpn --config="$temp_config" -v 2>&1 | tee "$temp_output" | head -15 || true
     echo ""
     
     # Look for certificate hash patterns
@@ -372,7 +514,8 @@ detect_trusted_certificate() {
     if [[ -z "$cert_hash" ]]; then
         echo "Method 4: Using OpenSSL to retrieve server certificate..."
         local ssl_output="/tmp/ssl_cert_$$.txt"
-        timeout 10 openssl s_client -connect "$vpn_host:$vpn_port" -servername "$vpn_host" 2>/dev/null | openssl x509 -fingerprint -sha256 -noout 2>/dev/null | cut -d= -f2 > "$ssl_output" || true
+        gtimeout 10 openssl s_client -connect "$vpn_host:$vpn_port" -servername "$vpn_host" 2>/dev/null | openssl x509 -fingerprint -sha256 -noout 2>/dev/null | cut -d= -f2 > "$ssl_output" 2>/dev/null || \
+        perl -e 'alarm 10; exec @ARGV' openssl s_client -connect "$vpn_host:$vpn_port" -servername "$vpn_host" 2>/dev/null | openssl x509 -fingerprint -sha256 -noout 2>/dev/null | cut -d= -f2 > "$ssl_output" 2>/dev/null || true
         
         if [[ -s "$ssl_output" ]]; then
             cert_hash=$(cat "$ssl_output" | tr -d ' ')
