@@ -58,12 +58,17 @@ echo "📱 OTP extraction script: $OTP_SCRIPT"
 echo ""
 echo "🔄 Starting FortiVPN connection..."
 
-# Pre-authenticate sudo to enable Touch ID
+# Pre-authenticate sudo to enable Touch ID and extend timeout
 echo "🔐 Authenticating with Touch ID (or password)..."
 if ! sudo -v; then
     echo "❌ Authentication failed"
     exit 1
 fi
+
+# Keep sudo credentials fresh by refreshing them in background
+# This prevents the second Touch ID prompt
+(while true; do sleep 60; sudo -n true; done 2>/dev/null) &
+SUDO_REFRESH_PID=$!
 
 # Create expect script for automation
 cat > /tmp/forti_expect.exp << 'EXPECT_EOF'
@@ -89,9 +94,8 @@ set otp_submitted 0
 while {1} {
     expect {
         "Password:" {
-            puts "🔐 Please enter your sudo password:"
-            interact -o "\r" return
-            exp_continue
+            puts "❌ Sudo authentication expired. Please run the script again."
+            exit 1
         }
         "DEBUG:  Loaded configuration file" {
             puts "📝 Configuration loaded successfully"
@@ -225,6 +229,11 @@ echo ""
 
 # Run the expect script
 /tmp/forti_expect.exp "$CONFIG_FILE" "$OTP_SCRIPT"
+
+# Cleanup sudo refresh process
+if [[ -n "$SUDO_REFRESH_PID" ]]; then
+    kill $SUDO_REFRESH_PID 2>/dev/null
+fi
 
 # Cleanup
 rm -f /tmp/forti_expect.exp
