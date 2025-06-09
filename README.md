@@ -196,8 +196,8 @@ fortivpn-setup --skip-check    # Skip system validation if needed
 
 **"System requirements not met"**
 - Run: `fortivpn-setup` for automatic validation and guidance
-- Check Full Disk Access: System Preferences > Privacy & Security > Full Disk Access
-- Add Terminal.app and restart Terminal
+- Check Full Disk Access: System Settings > Privacy & Security > Full Disk Access
+- Toggle ON the switch next to Terminal and restart Terminal
 
 **"OTP detection failed"**
 - Verify Messages app is receiving SMS codes
