@@ -56,7 +56,7 @@ fi
 echo "📝 Configuration file: $CONFIG_FILE"
 echo "📱 OTP extraction script: $OTP_SCRIPT"
 echo ""
-echo "🔄 Starting FortiVPN connection..."
+echo "🔄 Initializing VPN connection..."
 
 # Pre-authenticate sudo to enable Touch ID and extend timeout
 echo "🔐 Authenticating with Touch ID (or password)..."
@@ -78,21 +78,21 @@ cleanup() {
     # Kill sudo refresh process
     if [[ -n "$SUDO_REFRESH_PID" ]]; then
         kill $SUDO_REFRESH_PID 2>/dev/null
-        echo "🔐 Stopped sudo refresh process"
+        echo "🔐 Stopped background authentication"
     fi
     
     # Kill any running openfortivpn processes
     if pgrep -f "openfortivpn" > /dev/null; then
-        echo "🔌 Disconnecting FortiVPN..."
+        echo "⚠️  Disconnecting VPN..."
         sudo pkill openfortivpn 2>/dev/null
         sleep 1
-        echo "✅ FortiVPN disconnected"
+        echo "✅ VPN disconnected"
     fi
     
     # Remove temporary files
     rm -f /tmp/forti_expect.exp
     
-    echo "🏁 Cleanup completed"
+    echo "🏁 Cleanup complete"
 }
 
 # Trap signals to ensure cleanup happens on exit/interruption
@@ -108,14 +108,14 @@ set timeout 120
 set config_file [lindex $argv 0]
 set otp_script [lindex $argv 1]
 
-# Enable debug logging
-log_user 1
+# Disable debug output for cleaner interface
+log_user 0
 exp_internal 0
 
-puts "🔗 Connecting to FortiVPN server..."
+puts "\033\[32mConnecting to FortiVPN server...\033\[0m"
 
-# Start openfortivpn with verbose mode
-spawn sudo openfortivpn --config=$config_file -v
+# Start openfortivpn without verbose mode for cleaner output
+spawn sudo openfortivpn --config=$config_file
 
 # Initialize OTP submission flag
 set otp_submitted 0
@@ -124,28 +124,29 @@ set otp_submitted 0
 while {1} {
     expect {
         "Password:" {
-            puts "❌ Sudo authentication expired. Please run the script again."
+            puts "❌ Authentication expired. Please run the script again."
             exit 1
         }
-        "DEBUG:  Loaded configuration file" {
-            puts "📝 Configuration loaded successfully"
+        -re "(Connected to gateway|tunnel is up)" {
+            puts "\033\[32m✅ Connected to VPN gateway!\033\[0m"
             exp_continue
         }
-        "DEBUG:  Resolving gateway host ip" {
-            puts "🔍 Resolving server address..."
+        -re "(ERROR|WARN|DEBUG):" {
+            # Silently consume debug/error messages
             exp_continue
         }
-        "DEBUG:  Establishing TLS connection" {
-            puts "🔐 Establishing secure connection..."
-            exp_continue
+        -re "SSL_connect.*error" {
+            puts "\n\033\[31m❌ SSL connection failed\033\[0m"
+            puts "\033\[31m⚠️  Disconnecting VPN due to SSL/certificate error\033\[0m"
+            puts "\033\[33mℹ️  Try adding --insecure-ssl to your config or check certificate settings\033\[0m"
+            catch {exec sudo pkill openfortivpn}
+            exit 1
         }
-        "DEBUG:  server_addr:" {
-            puts "🌐 Server address resolved"
-            exp_continue
-        }
-        "Connected to gateway" {
-            puts "✅ Connected to gateway successfully!"
-            exp_continue
+        -re "Could not log out" {
+            puts "\n\033\[31m❌ Connection failed during setup\033\[0m"
+            puts "\033\[31m⚠️  Disconnecting VPN due to connection setup error\033\[0m"
+            catch {exec sudo pkill openfortivpn}
+            exit 1
         }
         -re "Two.*factor.*token" {
             # Skip if we've already submitted an OTP
@@ -155,13 +156,11 @@ while {1} {
             }
             
             puts "\n🔐 2FA prompt detected!"
-            puts "⏰ Starting CONTINUOUS OTP monitoring..."
-            puts "🔍 Checking Messages app constantly for new OTP codes"
+            puts "📱 Monitoring Messages app for OTP codes..."
             puts ""
             
             # Record the current timestamp when 2FA prompt appears
             set prompt_time [clock seconds]
-            puts "DEBUG: Timestamp recorded: $prompt_time"
             
             # Continuous monitoring with very short intervals (0.5 seconds)
             set otp_code ""
@@ -169,20 +168,18 @@ while {1} {
             
             for {set i 0} {$i < $max_attempts} {incr i} {
                 if {[expr $i % 20] == 0} {
-                    puts "💭 Monitoring... ([expr $i/2] seconds elapsed)"
+                    puts "⏳ Waiting for OTP... ([expr $i/2] seconds elapsed)"
                 }
                 
                 catch {
                     # Pass the prompt timestamp to the script so it only looks for newer messages
                     set otp_code [exec osascript $otp_script $prompt_time]
-                    puts "DEBUG: OTP script returned: '$otp_code'"
                 } catch_result
                 
                 if {$otp_code != ""} {
-                    puts "\n✅ OTP detected: $otp_code"
-                    puts "🔑 Auto-entering OTP code..."
+                    puts "\n\033\[32m✅ OTP code received: $otp_code\033\[0m"
+                    puts "\033\[36m🔑 Submitting authentication code...\033\[0m"
                     send "$otp_code\r"
-                    puts "🛑 Stopping OTP monitoring - code submitted"
                     set otp_submitted 1
                     break
                 } else {
@@ -204,58 +201,53 @@ while {1} {
             exp_continue
         }
         "Authenticated" {
-            puts "\n🎉 Authentication successful!"
-            puts "🛑 Stopping OTP monitoring - authentication complete"
+            puts "\n\033\[32m🎉 Authentication successful!\033\[0m"
             exp_continue
         }
         "Negotiation complete" {
             puts "\n🔗 VPN negotiation complete"
-            puts "🛑 Stopping OTP monitoring - tunnel negotiation complete"
             exp_continue
         }
         "tunnel is up and running" {
-            puts "\n🎉 Connected ✅"
-            puts "🔒 VPN tunnel established - press Ctrl+C to disconnect"
-            puts "🛑 OTP monitoring stopped - connection established"
+            puts "\n\033\[32m🎉 VPN Connected Successfully! ✅\033\[0m"
+            puts "\033\[32m🔒 Secure tunnel established\033\[0m"
+            puts ""
+            puts "💡 Your connection is now active. Press Ctrl+C to disconnect."
             interact
         }
         "Invalid token" {
-            puts "\n❌ Invalid OTP token - may be expired"
-            puts "🛑 Stopping OTP monitoring - authentication failed"
-            puts "🔌 Disconnecting FortiVPN..."
+            puts "\n\033\[31m❌ Invalid OTP token - may be expired\033\[0m"
+            puts "\033\[31m⚠️  Disconnecting VPN due to invalid authentication token\033\[0m"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "Login failed" {
-            puts "\n❌ Login failed - check credentials"
-            puts "🛑 Stopping OTP monitoring - login failed"
-            puts "🔌 Disconnecting FortiVPN..."
+            puts "\n\033\[31m❌ Login failed - check credentials\033\[0m"
+            puts "\033\[31m⚠️  Disconnecting VPN due to login failure\033\[0m"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "Could not authenticate to gateway" {
-            puts "\n❌ Authentication failed - check credentials or OTP"
-            puts "🛑 Stopping OTP monitoring - authentication failed"
-            puts "🔌 Disconnecting FortiVPN..."
+            puts "\n\033\[31m❌ Authentication failed - check credentials or OTP\033\[0m"
+            puts "\033\[31m⚠️  Disconnecting VPN due to authentication failure\033\[0m"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "authentication failed" {
-            puts "\n❌ Authentication failed"
-            puts "🛑 Stopping OTP monitoring - authentication failed"
-            puts "🔌 Disconnecting FortiVPN..."
+            puts "\n\033\[31m❌ Authentication failed\033\[0m"
+            puts "\033\[31m⚠️  Disconnecting VPN due to authentication failure\033\[0m"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         timeout {
-            puts "\n❌ Connection timeout"
-            puts "🔌 Disconnecting FortiVPN due to timeout..."
+            puts "\n\033\[31m❌ Connection timeout\033\[0m"
+            puts "\033\[31m⚠️  Disconnecting VPN due to connection timeout\033\[0m"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         eof {
-            puts "\n🔚 Connection ended unexpectedly"
-            puts "🔌 Disconnecting FortiVPN due to unexpected end..."
+            puts "\n\033\[31m❌ Connection ended unexpectedly\033\[0m"
+            puts "\033\[31m⚠️  Disconnecting VPN due to connection error\033\[0m"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
@@ -273,4 +265,4 @@ echo ""
 /tmp/forti_expect.exp "$CONFIG_FILE" "$OTP_SCRIPT"
 
 echo ""
-echo "🏁 FortiVPN automation completed"
+echo "🏁 Session ended"
