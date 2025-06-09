@@ -82,6 +82,9 @@ puts "🔗 Connecting to FortiVPN server..."
 # Start openfortivpn with verbose mode
 spawn sudo openfortivpn --config=$config_file -v
 
+# Initialize OTP submission flag
+set otp_submitted 0
+
 # Handle the various prompts that may appear
 while {1} {
     expect {
@@ -111,6 +114,12 @@ while {1} {
             exp_continue
         }
         -re "Two.*factor.*token" {
+            # Skip if we've already submitted an OTP
+            if {$otp_submitted == 1} {
+                puts "🔄 Waiting for authentication result..."
+                exp_continue
+            }
+            
             puts "\n🔐 2FA prompt detected!"
             puts "⏰ Starting CONTINUOUS OTP monitoring..."
             puts "🔍 Checking Messages app constantly for new OTP codes"
@@ -140,6 +149,7 @@ while {1} {
                     puts "🔑 Auto-entering OTP code..."
                     send "$otp_code\r"
                     puts "🛑 Stopping OTP monitoring - code submitted"
+                    set otp_submitted 1
                     break
                 } else {
                     if {$i < [expr $max_attempts - 1]} {
