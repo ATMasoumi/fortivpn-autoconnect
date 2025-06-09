@@ -5,6 +5,16 @@
 
 set -e
 
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
+
 # Determine script directory and config paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
@@ -21,11 +31,11 @@ else
 fi
 
 echo "🚀 FortiVPN Auto-Connect with 2FA"
-echo "=================================="
+echo "======================================="
 
 # Check if already connected
 if pgrep -f "openfortivpn" > /dev/null; then
-    echo "✅ FortiVPN is already running"
+    echo -e "${GREEN}✅ FortiVPN is already running${NC}"
     echo ""
     echo "Current connection status:"
     ps aux | grep openfortivpn | grep -v grep || echo "No active connections found"
@@ -36,7 +46,7 @@ fi
 
 # Check config file exists
 if [[ ! -f "$CONFIG_FILE" ]]; then
-    echo "❌ Config file not found: $CONFIG_FILE"
+    echo -e "${RED}❌ Config file not found: $CONFIG_FILE${NC}"
     if [[ "$SCRIPT_DIR" =~ /usr/local/bin ]] || [[ "$SCRIPT_DIR" =~ /opt/homebrew/bin ]]; then
         echo ""
         echo "🔧 Run 'fortivpn-setup' to configure your VPN settings"
@@ -48,7 +58,7 @@ fi
 
 # Check OTP script exists
 if [[ ! -f "$OTP_SCRIPT" ]]; then
-    echo "❌ OTP script not found: $OTP_SCRIPT"
+    echo -e "${RED}❌ OTP script not found: $OTP_SCRIPT${NC}"
     echo "Please ensure get_otp_code.scpt exists"
     exit 1
 fi
@@ -61,7 +71,7 @@ echo "🔄 Initializing VPN connection..."
 # Pre-authenticate sudo to enable Touch ID and extend timeout
 echo "🔐 Authenticating with Touch ID (or password)..."
 if ! sudo -v; then
-    echo "❌ Authentication failed"
+    echo -e "${RED}❌ Authentication failed${NC}"
     exit 1
 fi
 
@@ -86,7 +96,7 @@ cleanup() {
         echo "⚠️  Disconnecting VPN..."
         sudo pkill openfortivpn 2>/dev/null
         sleep 1
-        echo "✅ VPN disconnected"
+        echo -e "${GREEN}✅ VPN disconnected${NC}"
     fi
     
     # Remove temporary files
@@ -108,11 +118,16 @@ set timeout 120
 set config_file [lindex $argv 0]
 set otp_script [lindex $argv 1]
 
+# Color definitions for expect script (minimal)
+set RED "\033\[0;31m"
+set GREEN "\033\[0;32m"
+set NC "\033\[0m"
+
 # Disable debug output for cleaner interface
 log_user 0
 exp_internal 0
 
-puts "\033\[32mConnecting to FortiVPN server...\033\[0m"
+puts "${GREEN}-> Connecting to FortiVPN server...${NC}"
 
 # Start openfortivpn without verbose mode for cleaner output
 spawn sudo openfortivpn --config=$config_file
@@ -124,11 +139,11 @@ set otp_submitted 0
 while {1} {
     expect {
         "Password:" {
-            puts "❌ Authentication expired. Please run the script again."
+            puts "${RED}❌ Authentication expired. Please run the script again.${NC}"
             exit 1
         }
         -re "(Connected to gateway|tunnel is up)" {
-            puts "\033\[32m✅ Connected to VPN gateway!\033\[0m"
+            puts "${GREEN}✅ Connected to VPN gateway!${NC}"
             exp_continue
         }
         -re "(ERROR|WARN|DEBUG):" {
@@ -136,15 +151,15 @@ while {1} {
             exp_continue
         }
         -re "SSL_connect.*error" {
-            puts "\n\033\[31m❌ SSL connection failed\033\[0m"
-            puts "\033\[31m⚠️  Disconnecting VPN due to SSL/certificate error\033\[0m"
-            puts "\033\[33mℹ️  Try adding --insecure-ssl to your config or check certificate settings\033\[0m"
+            puts "\n${RED}❌ SSL connection failed${NC}"
+            puts "⚠️  Disconnecting VPN due to SSL/certificate error"
+            puts "ℹ️  Try adding --insecure-ssl to your config or check certificate settings"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         -re "Could not log out" {
-            puts "\n\033\[31m❌ Connection failed during setup\033\[0m"
-            puts "\033\[31m⚠️  Disconnecting VPN due to connection setup error\033\[0m"
+            puts "\n${RED}❌ Connection failed during setup${NC}"
+            puts "⚠️  Disconnecting VPN due to connection setup error"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
@@ -177,8 +192,8 @@ while {1} {
                 } catch_result
                 
                 if {$otp_code != ""} {
-                    puts "\n\033\[32m✅ OTP code received: $otp_code\033\[0m"
-                    puts "\033\[36m🔑 Submitting authentication code...\033\[0m"
+                    puts "\n${GREEN}✅ OTP code received: $otp_code${NC}"
+                    puts "🔑 Submitting authentication code..."
                     send "$otp_code\r"
                     set otp_submitted 1
                     break
@@ -191,7 +206,7 @@ while {1} {
             }
             
             if {$otp_code == ""} {
-                puts "\n❌ No OTP code detected after 60 seconds"
+                puts "\n${RED}❌ No OTP code detected after 60 seconds${NC}"
                 puts "📱 Please enter the OTP code manually:"
                 interact
                 exit 1
@@ -201,53 +216,53 @@ while {1} {
             exp_continue
         }
         "Authenticated" {
-            puts "\n\033\[32m🎉 Authentication successful!\033\[0m"
+            puts "\n${GREEN}🎉 Authentication successful!${NC}"
             exp_continue
         }
         "Negotiation complete" {
-            puts "\n🔗 VPN negotiation complete"
+            puts "\n📋 VPN negotiation complete"
             exp_continue
         }
         "tunnel is up and running" {
-            puts "\n\033\[32m🎉 VPN Connected Successfully! ✅\033\[0m"
-            puts "\033\[32m🔒 Secure tunnel established\033\[0m"
+            puts "\n${GREEN}🎉 VPN Connected Successfully!${NC}"
+            puts "${GREEN}🔒 Secure tunnel established${NC}"
             puts ""
-            puts "💡 Your connection is now active. Press Ctrl+C to disconnect."
+            puts "ℹ️  Your connection is now active. Press Ctrl+C to disconnect."
             interact
         }
         "Invalid token" {
-            puts "\n\033\[31m❌ Invalid OTP token - may be expired\033\[0m"
-            puts "\033\[31m⚠️  Disconnecting VPN due to invalid authentication token\033\[0m"
+            puts "\n${RED}❌ Invalid OTP token - may be expired${NC}"
+            puts "⚠️  Disconnecting VPN due to invalid authentication token"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "Login failed" {
-            puts "\n\033\[31m❌ Login failed - check credentials\033\[0m"
-            puts "\033\[31m⚠️  Disconnecting VPN due to login failure\033\[0m"
+            puts "\n${RED}❌ Login failed - check credentials${NC}"
+            puts "⚠️  Disconnecting VPN due to login failure"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "Could not authenticate to gateway" {
-            puts "\n\033\[31m❌ Authentication failed - check credentials or OTP\033\[0m"
-            puts "\033\[31m⚠️  Disconnecting VPN due to authentication failure\033\[0m"
+            puts "\n${RED}❌ Authentication failed - check credentials or OTP${NC}"
+            puts "⚠️  Disconnecting VPN due to authentication failure"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "authentication failed" {
-            puts "\n\033\[31m❌ Authentication failed\033\[0m"
-            puts "\033\[31m⚠️  Disconnecting VPN due to authentication failure\033\[0m"
+            puts "\n${RED}❌ Authentication failed${NC}"
+            puts "⚠️  Disconnecting VPN due to authentication failure"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         timeout {
-            puts "\n\033\[31m❌ Connection timeout\033\[0m"
-            puts "\033\[31m⚠️  Disconnecting VPN due to connection timeout\033\[0m"
+            puts "\n${RED}❌ Connection timeout${NC}"
+            puts "⚠️  Disconnecting VPN due to connection timeout"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
         eof {
-            puts "\n\033\[31m❌ Connection ended unexpectedly\033\[0m"
-            puts "\033\[31m⚠️  Disconnecting VPN due to connection error\033\[0m"
+            puts "\n${RED}❌ Connection ended unexpectedly${NC}"
+            puts "⚠️  Disconnecting VPN due to connection error"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }

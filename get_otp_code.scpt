@@ -21,7 +21,7 @@ on run argv
         
         # Use database method to get the most recent VPN OTP message AFTER the prompt timestamp
         # Use a more optimized query that only checks recent messages for better performance
-        set dbQuery to "sqlite3 ~/Library/Messages/chat.db \"SELECT text FROM message WHERE (text LIKE '%کد OTP شما برای VPN FortiGate:%' OR text LIKE '%VPN FortiGate%' OR text LIKE '%OTP%') AND datetime(date/1000000000 + strftime('%s', '2001-01-01'), 'unixepoch') > datetime(" & promptTimestamp & ", 'unixepoch') ORDER BY date DESC LIMIT 1;\" 2>/dev/null"
+        set dbQuery to "sqlite3 ~/Library/Messages/chat.db \"SELECT text FROM message WHERE (text LIKE '%VPN FortiGate%' OR text LIKE '%OTP%' OR text LIKE '%FortiGate%') AND datetime(date/1000000000 + strftime('%s', '2001-01-01'), 'unixepoch') > datetime(" & promptTimestamp & ", 'unixepoch') ORDER BY date DESC LIMIT 1;\" 2>/dev/null"
         
         try
             set messageText to do shell script dbQuery
@@ -41,7 +41,7 @@ on run argv
         # Fallback to original AppleScript method (also checking messages after prompt timestamp)
         tell application "Messages"
             set otpPattern to "VPN FortiGate"
-            set persianPattern to "کد OTP شما برای VPN FortiGate:"
+            set fortigatePattern to "FortiGate"
             
             # Convert timestamp to AppleScript date
             set promptDate to (do shell script "date -r " & promptTimestamp) as string
@@ -66,8 +66,8 @@ on run argv
                                     
                                     -- Check if message arrived AFTER the 2FA prompt
                                     if messageDate > promptDate then
-                                        -- Check if this is an OTP message (Persian or English)
-                                        if messageText contains otpPattern or messageText contains persianPattern then
+                                        -- Check if this is an OTP message (English patterns only)
+                                        if messageText contains otpPattern or messageText contains fortigatePattern then
                                             -- Use shell command to extract 6-digit code
                                             set sixDigitCode to do shell script "echo " & quoted form of messageText & " | grep -o '[0-9]\\{6\\}' | head -1 || echo ''"
                                             if sixDigitCode is not "" then
