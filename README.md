@@ -31,6 +31,8 @@ fortivpn-setup
 
 That's it! After setup, connect with:
 ```bash
+forti
+# or the full command:
 fortivpn-autoconnect
 ```
 
@@ -117,6 +119,8 @@ trusted-cert = certificate_hash_if_needed
 
 ### Connect to VPN:
 ```bash
+forti
+# or
 fortivpn-autoconnect
 ```
 
