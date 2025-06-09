@@ -205,28 +205,104 @@ check_system_requirements() {
         esac
     fi
     
-    # Check Touch ID for sudo
+    # Check Touch ID for sudo_local
     echo "🔑 Checking Touch ID for sudo..."
     local pam_tid_configured=false
-    local sudo_config="/etc/pam.d/sudo"
+    local sudo_local_config="/etc/pam.d/sudo_local"
     
-    if [[ -f "$sudo_config" ]] && grep -q "pam_tid.so" "$sudo_config" 2>/dev/null; then
-        echo -e "${GREEN}✅ Touch ID is configured for sudo${NC}"
+    if [[ -f "$sudo_local_config" ]] && grep -q "pam_tid.so" "$sudo_local_config" 2>/dev/null; then
+        echo -e "${GREEN}✅ Touch ID is configured for sudo_local${NC}"
         pam_tid_configured=true
     else
-        echo -e "${YELLOW}⚠️  Touch ID not configured for sudo${NC}"
-        echo "   To enable Touch ID for sudo:"
-        echo "   1. Run: sudo vim /etc/pam.d/sudo"
-        echo "   2. Add this line at the top: auth sufficient pam_tid.so"
-        echo "   3. Save and exit"
-        echo "   Alternative: Continue with password authentication"
+        echo -e "${YELLOW}⚠️  Touch ID not configured for sudo_local${NC}"
+        echo ""
+        echo "Touch ID can be automatically configured for faster sudo authentication."
+        echo ""
+        echo "Options:"
+        echo "1) Yes - Configure Touch ID for sudo_local automatically"
+        echo "2) No - Continue with password authentication"
+        echo "3) Show manual instructions"
+        echo ""
+        read -p "Choose option (1/2/3): " touchid_choice
+        
+        case "$touchid_choice" in
+            1)
+                echo ""
+                echo -e "${CYAN}🔧 Configuring Touch ID for sudo_local...${NC}"
+                
+                # Check if sudo_local file exists, create if it doesn't
+                if [[ ! -f "$sudo_local_config" ]]; then
+                    echo "📝 Creating /etc/pam.d/sudo_local file..."
+                    if sudo tee "$sudo_local_config" > /dev/null << 'EOF'
+# sudo_local: local config file which survives system update and is included for sudo
+# uncomment following line to enable Touch ID for sudo
+auth       sufficient     pam_tid.so
+auth       include        sudo
+account    include        sudo
+password   include        sudo
+session    include        sudo
+EOF
+                    then
+                        echo -e "${GREEN}✅ Touch ID successfully configured for sudo_local${NC}"
+                        pam_tid_configured=true
+                    else
+                        echo -e "${RED}❌ Failed to create sudo_local configuration${NC}"
+                        echo "   You may need to configure it manually"
+                    fi
+                else
+                    # File exists, check if pam_tid.so line needs to be added/uncommented
+                    if grep -q "^#.*auth.*sufficient.*pam_tid.so" "$sudo_local_config" 2>/dev/null; then
+                        echo "📝 Uncommenting existing Touch ID configuration..."
+                        if sudo sed -i '' 's/^#.*auth.*sufficient.*pam_tid.so/auth       sufficient     pam_tid.so/' "$sudo_local_config"; then
+                            echo -e "${GREEN}✅ Touch ID successfully enabled in sudo_local${NC}"
+                            pam_tid_configured=true
+                        else
+                            echo -e "${RED}❌ Failed to uncomment Touch ID configuration${NC}"
+                        fi
+                    elif ! grep -q "pam_tid.so" "$sudo_local_config" 2>/dev/null; then
+                        echo "📝 Adding Touch ID configuration to existing sudo_local..."
+                        # Create a temporary file with the pam_tid.so line at the top
+                        local temp_file="/tmp/sudo_local_temp_$$"
+                        echo "auth       sufficient     pam_tid.so" > "$temp_file"
+                        cat "$sudo_local_config" >> "$temp_file"
+                        
+                        if sudo cp "$temp_file" "$sudo_local_config"; then
+                            echo -e "${GREEN}✅ Touch ID successfully added to sudo_local${NC}"
+                            pam_tid_configured=true
+                        else
+                            echo -e "${RED}❌ Failed to update sudo_local configuration${NC}"
+                        fi
+                        rm -f "$temp_file"
+                    else
+                        echo -e "${GREEN}✅ Touch ID already configured in sudo_local${NC}"
+                        pam_tid_configured=true
+                    fi
+                fi
+                ;;
+            2)
+                echo -e "${YELLOW}⚠️  Continuing with password authentication${NC}"
+                echo "   You can configure Touch ID later by running this setup again"
+                ;;
+            3)
+                echo ""
+                echo -e "${CYAN}📋 Manual Touch ID Configuration Instructions:${NC}"
+                echo "   1. Run: sudo vim /etc/pam.d/sudo_local"
+                echo "   2. Add this line at the top: auth sufficient pam_tid.so"
+                echo "   3. Save and exit"
+                echo ""
+                echo "   Alternative: Continue with password authentication"
+                ;;
+            *)
+                echo "Invalid choice. Continuing with password authentication."
+                ;;
+        esac
     fi
     
     # Test if current sudo session works
     if sudo -n true 2>/dev/null; then
         echo -e "${GREEN}✅ Current sudo session is active${NC}"
     elif [[ "$pam_tid_configured" == true ]]; then
-        echo -e "${YELLOW}⚠️  Touch ID configured but sudo session not active${NC}"
+        echo -e "${YELLOW}⚠️  Touch ID configured for sudo_local but sudo session not active${NC}"
         echo "   This is normal - Touch ID will prompt when needed"
     else
         echo -e "${YELLOW}⚠️  No active sudo session (password will be required)${NC}"
@@ -322,9 +398,11 @@ show_status() {
     # Check sudo Touch ID
     if sudo -n true 2>/dev/null; then
         echo "✅ sudo authentication cached"
+    elif grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
+        echo "✅ Touch ID configured for sudo_local"
     else
-        echo "⚠️  sudo Touch ID not configured or authentication needed"
-        echo "   Configure Touch ID for sudo in System Preferences"
+        echo "⚠️  Touch ID not configured for sudo_local or authentication needed"
+        echo "   Configure Touch ID for sudo_local in /etc/pam.d/sudo_local"
     fi
     
     # Check Messages permissions
@@ -743,7 +821,7 @@ show_usage() {
     echo -e "${CYAN}After setup is complete, you can:${NC}"
     echo ""
     echo "1. Connect to VPN:"
-    echo -e "${GREEN}   forti${NC}                          # Short command"
+    echo -e "${GREEN}   fortivpn-autoconnect${NC}             # Main command"
     echo -e "${GREEN}   fortivpn-autoconnect${NC}          # Full command"
     echo ""
     echo "2. Check status (if needed):"

@@ -6,9 +6,9 @@ Transform your VPN connection experience from a complex multi-step process into 
 
 ## ✨ Features
 
-- **🔄 Fully Automated**: Connect with a single command (`forti`)
+- **🔄 Fully Automated**: Connect with a single command (`fortivpn-autoconnect`)
 - **📱 Smart 2FA**: Automatically extracts OTP codes from Messages app
-- **🔐 Touch ID Integration**: Seamless sudo authentication (optional)
+- **🔐 Touch ID Integration**: Automatic Touch ID configuration for sudo_local (optional)
 - **⚡ Fast Connection**: Continuous monitoring for instant OTP detection
 - **🛡️ Secure**: Config files stored with proper permissions (600)
 - **🔧 Easy Setup**: Enhanced interactive setup wizard with system validation
@@ -35,9 +35,15 @@ fortivpn-setup
 
 That's it! After setup, connect with:
 ```bash
-forti
-# or the full command:
 fortivpn-autoconnect
+```
+
+**Optional**: Create your own alias for convenience:
+```bash
+# Add to your ~/.zshrc or ~/.bashrc
+alias forti="fortivpn-autoconnect"
+# Or any other alias you prefer:
+alias vpn="fortivpn-autoconnect"
 ```
 
 ## 📋 What This Replaces
@@ -88,10 +94,10 @@ cp forticonfig.template forticonfig
 nano forticonfig
 
 # Make scripts executable
-chmod +x forti_connect.sh fortivpn-setup
+chmod +x fortivpn-autoconnect fortivpn-setup
 
 # Run the connection script
-./forti_connect.sh
+./fortivpn-autoconnect
 ```
 
 ## 📱 Prerequisites
@@ -146,7 +152,7 @@ trusted-cert = certificate_hash_if_needed  # Auto-detected during setup
 
 ### Connect to VPN:
 ```bash
-forti                          # Short command (new!)
+fortivpn-autoconnect             # Main command
 # or
 fortivpn-autoconnect          # Full command
 ```
@@ -286,7 +292,7 @@ MIT License - see LICENSE file for details.
 
 > "The v1.5.0 update is incredible! Setup went from 45 minutes to 2 minutes, and the color coding makes everything so much clearer. The automatic certificate detection saved me hours of debugging!" - DevOps Engineer
 
-> "I love the new `forti` command - so much easier than typing the full name. The enhanced validation caught my Messages app configuration issue immediately." - Remote Developer
+> "The automated setup and 2FA detection works flawlessly. No more manual OTP entry!" - Remote Developer
 
 > "Went from dreading VPN connections to connecting in seconds. The 2FA automation is magic, and now the setup is foolproof!" - Security Analyst
 
