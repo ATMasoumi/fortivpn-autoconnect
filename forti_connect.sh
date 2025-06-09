@@ -70,6 +70,36 @@ fi
 (while true; do sleep 60; sudo -n true; done 2>/dev/null) &
 SUDO_REFRESH_PID=$!
 
+# Setup cleanup function for when script exits or is interrupted
+cleanup() {
+    echo ""
+    echo "🧹 Cleaning up..."
+    
+    # Kill sudo refresh process
+    if [[ -n "$SUDO_REFRESH_PID" ]]; then
+        kill $SUDO_REFRESH_PID 2>/dev/null
+        echo "🔐 Stopped sudo refresh process"
+    fi
+    
+    # Kill any running openfortivpn processes
+    if pgrep -f "openfortivpn" > /dev/null; then
+        echo "🔌 Disconnecting FortiVPN..."
+        sudo pkill openfortivpn 2>/dev/null
+        sleep 1
+        echo "✅ FortiVPN disconnected"
+    fi
+    
+    # Remove temporary files
+    rm -f /tmp/forti_expect.exp
+    
+    echo "🏁 Cleanup completed"
+}
+
+# Trap signals to ensure cleanup happens on exit/interruption
+trap cleanup EXIT
+trap cleanup INT
+trap cleanup TERM
+
 # Create expect script for automation
 cat > /tmp/forti_expect.exp << 'EXPECT_EOF'
 #!/usr/bin/expect -f
@@ -192,29 +222,41 @@ while {1} {
         "Invalid token" {
             puts "\n❌ Invalid OTP token - may be expired"
             puts "🛑 Stopping OTP monitoring - authentication failed"
+            puts "🔌 Disconnecting FortiVPN..."
+            catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "Login failed" {
             puts "\n❌ Login failed - check credentials"
             puts "🛑 Stopping OTP monitoring - login failed"
+            puts "🔌 Disconnecting FortiVPN..."
+            catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "Could not authenticate to gateway" {
             puts "\n❌ Authentication failed - check credentials or OTP"
             puts "🛑 Stopping OTP monitoring - authentication failed"
+            puts "🔌 Disconnecting FortiVPN..."
+            catch {exec sudo pkill openfortivpn}
             exit 1
         }
         "authentication failed" {
             puts "\n❌ Authentication failed"
             puts "🛑 Stopping OTP monitoring - authentication failed"
+            puts "🔌 Disconnecting FortiVPN..."
+            catch {exec sudo pkill openfortivpn}
             exit 1
         }
         timeout {
             puts "\n❌ Connection timeout"
+            puts "🔌 Disconnecting FortiVPN due to timeout..."
+            catch {exec sudo pkill openfortivpn}
             exit 1
         }
         eof {
             puts "\n🔚 Connection ended unexpectedly"
+            puts "🔌 Disconnecting FortiVPN due to unexpected end..."
+            catch {exec sudo pkill openfortivpn}
             exit 1
         }
     }
@@ -229,14 +271,6 @@ echo ""
 
 # Run the expect script
 /tmp/forti_expect.exp "$CONFIG_FILE" "$OTP_SCRIPT"
-
-# Cleanup sudo refresh process
-if [[ -n "$SUDO_REFRESH_PID" ]]; then
-    kill $SUDO_REFRESH_PID 2>/dev/null
-fi
-
-# Cleanup
-rm -f /tmp/forti_expect.exp
 
 echo ""
 echo "🏁 FortiVPN automation completed"
