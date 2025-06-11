@@ -66,16 +66,16 @@ alias vpn="fortivpn-autoconnect"
 
 **Time:** 2-3 minutes setup + 5-10 seconds per connection
 
-## 🌟 What's New in v1.5.0
+## 🌟 What's New in v2.0.1
 
-- **🔍 Enhanced System Validation**: Comprehensive checking of Full Disk Access, Touch ID, Messages app, and dependencies
-- **🎨 Colorized Output**: Beautiful color-coded messages throughout the setup and connection process
-- **🔧 Improved Setup Wizard**: Better input validation, password confirmation, and error handling  
-- **🔑 Smart Certificate Detection**: Multiple methods for automatic trusted certificate detection
-- **📱 Messages Integration Check**: Validates SMS forwarding and OTP delivery capabilities
-- **⚙️ Intelligent Defaults**: Port 443 as default, smart Homebrew installation, better error recovery
-- **🚀 New Command Options**: `--skip-check`, improved `--help`, enhanced status reporting
-- **🔄 Robust Installation**: Automatic Homebrew installation and dependency management
+- **🔐 Enhanced Authentication**: Dual authentication support for Touch ID enabled/disabled modes
+- **🌍 Multi-language OTP Support**: Added Persian/Farsi SMS pattern matching
+- **🔧 Improved Password Handling**: Better expect script sudo password interaction with stty -echo
+- **⚡ Pre-authentication Logic**: Added sudo pre-authentication in password mode to avoid complications
+- **🔍 Better Error Messages**: Enhanced "Could not authenticate to gateway" with detailed troubleshooting
+- **📱 Touch ID Detection**: Fixed hardware availability checking with bioutil -s command
+- **⏱️ Connection Timing**: Added 1-second delay after gateway connection for 2FA prompt setup
+- **🔄 Robust Persian SMS Support**: Database query includes Persian OTP patterns for comprehensive coverage
 
 ## 🔧 Manual Installation
 
@@ -300,4 +300,4 @@ MIT License - see LICENSE file for details.
 
 **Made with ❤️ by [Amin Torabi](https://github.com/ATMasoumi)**
 
-*Transform your VPN workflow today! v1.5.0 - Now with enhanced automation and beautiful UX*
+*Transform your VPN workflow today! v2.0.1 - Now with dual authentication support and Persian/English OTP detection*
