@@ -279,6 +279,24 @@ git pull origin main
 4. Test thoroughly
 5. Submit a pull request
 
+### 🏷️ Release Process (for maintainers)
+
+For every new tag release, SHA256 generation is required:
+
+```bash
+# 1. Update version and create tag
+git tag -a v2.0.2 -m "Version 2.0.2: [description]"
+git push origin v2.0.2
+
+# 2. Generate SHA256 (automated script)
+./generate-sha.sh v2.0.2
+
+# 3. Update Homebrew formula with the generated SHA
+# 4. Update RELEASE_INFO.md with release details
+```
+
+See `RELEASE_INFO.md` for detailed release workflow and `.github/copilot-instructions.md` for development guidelines.
+
 ## 📝 License
 
 MIT License - see LICENSE file for details.

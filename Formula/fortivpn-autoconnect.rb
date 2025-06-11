@@ -1,3 +1,10 @@
+# FortiVPN Auto-Connect Homebrew Formula
+# 
+# To update for new releases:
+# 1. Generate SHA: curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/vX.Y.Z.tar.gz | shasum -a 256
+# 2. Update url, sha256, and version fields below
+# 3. Test with: brew install --build-from-source ATMasoumi/fortivpn/fortivpn-autoconnect
+
 class FortivpnAutoconnect < Formula
   desc "Automated FortiVPN connection with 2FA OTP extraction from Messages app"
   homepage "https://github.com/ATMasoumi/fortivpn-autoconnect"

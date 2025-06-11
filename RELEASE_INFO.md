@@ -24,7 +24,41 @@ sha256 "7db739a24181468b561c19ee5add0dff8f8c87f269f53af4e63e2acc5fea6d61"
 version "2.0.1"
 ```
 
-## How to Generate SHA for Future Releases:
+## Release Process (Required for Every Tag Release)
+
+### Step-by-Step Release Workflow:
+
+1. **Update Version Number**
+   ```bash
+   # Update VERSION variable in fortivpn-autoconnect script
+   VERSION="X.Y.Z"
+   ```
+
+2. **Commit Changes and Create Tag**
+   ```bash
+   git add .
+   git commit -m "Release vX.Y.Z: [brief description]"
+   git tag -a vX.Y.Z -m "Version X.Y.Z: [detailed description]"
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+
+3. **Generate SHA256 (REQUIRED)**
+   ```bash
+   # Wait for GitHub to process the tag, then generate SHA
+   curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/vX.Y.Z.tar.gz | shasum -a 256
+   ```
+
+4. **Update RELEASE_INFO.md**
+   - Add new version section with SHA256
+   - Include release date, commit hash, and key features
+   - Update formula information
+
+5. **Update Homebrew Formula**
+   - Update `url`, `sha256`, and `version` in the tap repository
+   - Test the formula before publishing
+
+### SHA Generation Examples:
 
 ```bash
 # For a new version X.Y.Z:
@@ -32,6 +66,39 @@ curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/vX.Y.Z.tar.gz
 
 # Example for v2.0.2:
 curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/v2.0.2.tar.gz | shasum -a 256
+
+# Example for v2.1.0:
+curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/v2.1.0.tar.gz | shasum -a 256
+```
+
+### Automated SHA Generation Script:
+```bash
+#!/bin/bash
+# save as generate-sha.sh in project root
+
+if [ -z "$1" ]; then
+    echo "Usage: ./generate-sha.sh v2.0.2"
+    exit 1
+fi
+
+VERSION="$1"
+echo "🔍 Generating SHA256 for version $VERSION..."
+echo ""
+
+SHA=$(curl -sL "https://github.com/ATMasoumi/fortivpn-autoconnect/archive/$VERSION.tar.gz" | shasum -a 256 | cut -d' ' -f1)
+
+if [ -n "$SHA" ]; then
+    echo "✅ SHA256 for $VERSION:"
+    echo "$SHA"
+    echo ""
+    echo "📋 Formula update:"
+    echo "url \"https://github.com/ATMasoumi/fortivpn-autoconnect/archive/$VERSION.tar.gz\""
+    echo "sha256 \"$SHA\""
+    echo "version \"${VERSION#v}\""
+else
+    echo "❌ Failed to generate SHA256. Make sure the tag exists on GitHub."
+    exit 1
+fi
 ```
 
 ## Homebrew Tap Maintenance:
