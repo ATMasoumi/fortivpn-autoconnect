@@ -34,23 +34,31 @@ fi
 check_touchid_config() {
     local sudo_local_config="/etc/pam.d/sudo_local"
     
-    if [[ -f "$sudo_local_config" ]] && grep -q "pam_tid.so" "$sudo_local_config" 2>/dev/null; then
-        return 0  # Touch ID is configured
-    else
-        echo -e "${YELLOW}⚠️  Touch ID not configured for sudo_local${NC}"
+    # Check if Touch ID is already properly configured (uncommented)
+    if [[ -f "$sudo_local_config" ]] && grep -q "^auth.*sufficient.*pam_tid.so" "$sudo_local_config" 2>/dev/null; then
+        return 0  # Touch ID is properly configured
+    fi
+    
+    # Only offer configuration in interactive mode
+    if ! is_interactive; then
+        echo -e "${YELLOW}⚠️  Touch ID not configured and running non-interactively${NC}"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}⚠️  Touch ID not configured for sudo_local${NC}"
+    echo ""
+    echo "For faster authentication, you can configure Touch ID for sudo_local."
+    echo ""
+    read -p "Configure Touch ID now? (y/n): " configure_touchid
+    
+    if [[ "$configure_touchid" == "y" || "$configure_touchid" == "Y" ]]; then
         echo ""
-        echo "For faster authentication, you can configure Touch ID for sudo_local."
-        echo ""
-        read -p "Configure Touch ID now? (y/n): " configure_touchid
+        echo -e "${CYAN}🔧 Configuring Touch ID for sudo_local...${NC}"
         
-        if [[ "$configure_touchid" == "y" || "$configure_touchid" == "Y" ]]; then
-            echo ""
-            echo -e "${CYAN}🔧 Configuring Touch ID for sudo_local...${NC}"
-            
-            # Check if sudo_local file exists, create if it doesn't
-            if [[ ! -f "$sudo_local_config" ]]; then
-                echo "📝 Creating /etc/pam.d/sudo_local file..."
-                if sudo tee "$sudo_local_config" > /dev/null << 'EOF'
+        # Check if sudo_local file exists, create if it doesn't
+        if [[ ! -f "$sudo_local_config" ]]; then
+            echo "📝 Creating /etc/pam.d/sudo_local file..."
+            if sudo tee "$sudo_local_config" > /dev/null << 'EOF'
 # sudo_local: local config file which survives system update and is included for sudo
 # uncomment following line to enable Touch ID for sudo
 auth       sufficient     pam_tid.so
@@ -59,49 +67,48 @@ account    include        sudo
 password   include        sudo
 session    include        sudo
 EOF
-                then
-                    echo -e "${GREEN}✅ Touch ID successfully configured for sudo_local${NC}"
+            then
+                echo -e "${GREEN}✅ Touch ID successfully configured for sudo_local${NC}"
+                return 0
+            else
+                echo -e "${RED}❌ Failed to create sudo_local configuration${NC}"
+                return 1
+            fi
+        else
+            # File exists, check if pam_tid.so line needs to be added/uncommented
+            if grep -q "^#.*auth.*sufficient.*pam_tid.so" "$sudo_local_config" 2>/dev/null; then
+                echo "📝 Uncommenting existing Touch ID configuration..."
+                if sudo sed -i '' 's/^#.*auth.*sufficient.*pam_tid.so/auth       sufficient     pam_tid.so/' "$sudo_local_config"; then
+                    echo -e "${GREEN}✅ Touch ID successfully enabled in sudo_local${NC}"
                     return 0
                 else
-                    echo -e "${RED}❌ Failed to create sudo_local configuration${NC}"
+                    echo -e "${RED}❌ Failed to uncomment Touch ID configuration${NC}"
+                    return 1
+                fi
+            elif ! grep -q "pam_tid.so" "$sudo_local_config" 2>/dev/null; then
+                echo "📝 Adding Touch ID configuration to existing sudo_local..."
+                # Create a temporary file with the pam_tid.so line at the top
+                local temp_file="/tmp/sudo_local_temp_$$"
+                echo "auth       sufficient     pam_tid.so" > "$temp_file"
+                cat "$sudo_local_config" >> "$temp_file"
+                
+                if sudo cp "$temp_file" "$sudo_local_config"; then
+                    echo -e "${GREEN}✅ Touch ID successfully added to sudo_local${NC}"
+                    rm -f "$temp_file"
+                    return 0
+                else
+                    echo -e "${RED}❌ Failed to update sudo_local configuration${NC}"
+                    rm -f "$temp_file"
                     return 1
                 fi
             else
-                # File exists, check if pam_tid.so line needs to be added/uncommented
-                if grep -q "^#.*auth.*sufficient.*pam_tid.so" "$sudo_local_config" 2>/dev/null; then
-                    echo "📝 Uncommenting existing Touch ID configuration..."
-                    if sudo sed -i '' 's/^#.*auth.*sufficient.*pam_tid.so/auth       sufficient     pam_tid.so/' "$sudo_local_config"; then
-                        echo -e "${GREEN}✅ Touch ID successfully enabled in sudo_local${NC}"
-                        return 0
-                    else
-                        echo -e "${RED}❌ Failed to uncomment Touch ID configuration${NC}"
-                        return 1
-                    fi
-                elif ! grep -q "pam_tid.so" "$sudo_local_config" 2>/dev/null; then
-                    echo "📝 Adding Touch ID configuration to existing sudo_local..."
-                    # Create a temporary file with the pam_tid.so line at the top
-                    local temp_file="/tmp/sudo_local_temp_$$"
-                    echo "auth       sufficient     pam_tid.so" > "$temp_file"
-                    cat "$sudo_local_config" >> "$temp_file"
-                    
-                    if sudo cp "$temp_file" "$sudo_local_config"; then
-                        echo -e "${GREEN}✅ Touch ID successfully added to sudo_local${NC}"
-                        rm -f "$temp_file"
-                        return 0
-                    else
-                        echo -e "${RED}❌ Failed to update sudo_local configuration${NC}"
-                        rm -f "$temp_file"
-                        return 1
-                    fi
-                else
-                    echo -e "${GREEN}✅ Touch ID already configured in sudo_local${NC}"
-                    return 0
-                fi
+                echo -e "${GREEN}✅ Touch ID already configured in sudo_local${NC}"
+                return 0
             fi
-        else
-            echo "   Continuing with password authentication..."
-            return 1
         fi
+    else
+        echo "   Continuing with password authentication..."
+        return 1
     fi
 }
 
@@ -159,37 +166,94 @@ echo "📱 OTP extraction script: $OTP_SCRIPT"
 echo ""
 echo "🔄 Initializing VPN connection..."
 
+# Function to check if Touch ID is actually available and working
+check_touchid_available() {
+    # Check if running in interactive terminal
+    if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+        return 1  # Not interactive
+    fi
+    
+    # Check if Touch ID is configured in PAM
+    if ! grep -q "^auth.*sufficient.*pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
+        return 1  # Not configured
+    fi
+    
+    # Check if Touch ID hardware is available (basic check)
+    if ! bioutil -s 2>/dev/null | grep -q "Touch ID" 2>/dev/null; then
+        return 1  # Hardware not available
+    fi
+    
+    return 0  # Touch ID should be available
+}
+
+# Function to detect if running in automated/non-interactive environment
+is_interactive() {
+    # Check if stdin/stdout are terminals
+    [[ -t 0 ]] && [[ -t 1 ]] && [[ -t 2 ]]
+}
+
 # Pre-authenticate sudo with better handling for Touch ID vs password
 echo "🔐 Requesting sudo authentication..."
 
-# Check if Touch ID is available for sudo_local
+# Check if we already have valid sudo credentials
 if sudo -n true 2>/dev/null; then
     echo -e "${GREEN}✅ Using cached sudo credentials${NC}"
-elif grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
-    echo "🔍 Touch ID configured for sudo_local - requesting authentication..."
-    if sudo -v; then
-        echo -e "${GREEN}✅ Touch ID authentication successful${NC}"
-    else
-        echo -e "${RED}❌ Touch ID authentication failed${NC}"
-        exit 1
-    fi
 else
-    echo "🔐 Touch ID not configured for sudo_local..."
-    # Ask if user wants to configure Touch ID now
-    check_touchid_config
-    
-    # Now try authentication again
-    if sudo -v; then
-        echo -e "${GREEN}✅ Authentication successful${NC}"
+    # Determine authentication method
+    if check_touchid_available; then
+        echo "🔍 Touch ID detected - attempting authentication..."
+        
+        # Try Touch ID authentication with timeout and fallback
+        if gtimeout 30 sudo -v 2>/dev/null; then
+            echo -e "${GREEN}✅ Touch ID authentication successful${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Touch ID authentication timed out or failed${NC}"
+            echo "🔐 Falling back to password authentication..."
+            
+            # Fallback to password authentication
+            if sudo -v; then
+                echo -e "${GREEN}✅ Password authentication successful${NC}"
+            else
+                echo -e "${RED}❌ Authentication failed${NC}"
+                exit 1
+            fi
+        fi
     else
-        echo -e "${RED}❌ Authentication failed${NC}"
-        exit 1
+        # Touch ID not available, check if user wants to configure it
+        if grep -q "^auth.*sufficient.*pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
+            echo "🔐 Touch ID configured but not available - using password authentication..."
+        elif grep -q "pam_tid.so" /etc/pam.d/sudo_local 2>/dev/null; then
+            echo "🔐 Using password authentication (Touch ID disabled)"
+            echo "   💡 Tip: Run 'fortivpn-setup' to enable Touch ID for faster authentication"
+        else
+            echo "🔐 Using password authentication..."
+            # Ask if user wants to configure Touch ID now
+            check_touchid_config
+        fi
+        
+        # For password mode, try to pre-authenticate to avoid issues in expect script
+        echo "🔑 Pre-authenticating sudo access..."
+        if sudo -v; then
+            echo -e "${GREEN}✅ Password authentication successful${NC}"
+        else
+            echo -e "${RED}❌ Authentication failed${NC}"
+            exit 1
+        fi
     fi
 fi
 
 # Keep sudo credentials fresh by refreshing them in background
-# This prevents the second Touch ID prompt
-(while true; do sleep 60; sudo -n true; done 2>/dev/null) &
+# This prevents the second Touch ID prompt - refresh every 30 seconds
+# Use non-interactive refresh to avoid prompting in background
+(while true; do 
+    sleep 30
+    # Try non-interactive refresh first, fall back to interactive if needed
+    if ! sudo -n -v 2>/dev/null; then
+        # If non-interactive fails, credentials have expired
+        # The main expect script will handle the prompt
+        break
+    fi
+done) &
 SUDO_REFRESH_PID=$!
 
 # Setup cleanup function for when script exits or is interrupted
@@ -253,23 +317,35 @@ set connection_started 0
 while {1} {
     expect {
         -re "Password.*:" {
-            # This should be VPN password prompt, not sudo
-            # Since sudo is pre-authenticated, any password prompt should be from VPN server
-            puts "🔐 VPN server requesting password authentication..."
-            puts "📝 Using password from config file..."
-            # Let openfortivpn handle password from config file
-            # Don't send anything manually - it should read from config
-            exp_continue
-        }
-        -re "sudo.*Password.*:" {
-            # This shouldn't happen since we pre-authenticate sudo
-            puts "\n${RED}❌ Unexpected sudo password prompt${NC}"
-            puts "⚠️  Sudo authentication may have expired"
-            exit 1
+            # Check if this is a sudo password prompt or VPN password prompt
+            # If we see "Password:" right after spawn, it's likely sudo
+            if {$connection_started == 0} {
+                # This is sudo password prompt - let user enter password
+                puts "🔐 Please enter your sudo password:"
+                
+                # Use stty to hide password input temporarily
+                stty -echo
+                expect_user -re "(.*)\n"
+                set user_password $expect_out(1,string)
+                stty echo
+                
+                # Send the password
+                send "$user_password\r"
+                puts ""
+                exp_continue
+            } else {
+                # This should be VPN password prompt during connection
+                puts "🔐 VPN server requesting password authentication..."
+                puts "📝 Using password from config file..."
+                # Let openfortivpn handle password from config file
+                exp_continue
+            }
         }
         -re "(Connected to gateway|tunnel is up)" {
             puts "${GREEN}✅ Connected to VPN gateway!${NC}"
             set connection_started 1
+            # Add a small delay to allow server to set up 2FA prompt
+            after 1000
             exp_continue
         }
         -re "Established.*connection" {
@@ -298,27 +374,31 @@ while {1} {
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
-        -re "Two.*factor.*token|Enter.*token|Please enter.*token" {
+        -re "Two-factor authentication token:" {
             # Skip if we've already submitted an OTP
             if {$otp_submitted == 1} {
                 puts "🔄 Waiting for 2FA authentication result..."
                 exp_continue
             }
             
-            puts "\n🔐 2FA prompt detected!"
+            puts "\n${YELLOW}🔐 Two-factor authentication required${NC}"
             puts "📱 Monitoring Messages app for OTP codes..."
+            puts "📱 Please check your phone for SMS with verification code..."
             puts ""
             
             # Record the current timestamp when 2FA prompt appears
             set prompt_time [clock seconds]
             
-            # Continuous monitoring with short intervals
+            # Continuous monitoring with longer timeout and better feedback
             set otp_code ""
-            set max_attempts 120  ; # 120 * 0.5 = 60 seconds total
+            set max_attempts 240  ; # 240 * 0.5 = 120 seconds total (2 minutes)
             
             for {set i 0} {$i < $max_attempts} {incr i} {
+                # Show progress every 10 seconds
                 if {[expr $i % 20] == 0} {
-                    puts "⏳ Waiting for OTP... ([expr $i/2] seconds elapsed)"
+                    set elapsed [expr $i/2]
+                    puts "⏳ Waiting for SMS with OTP code... (${elapsed} seconds elapsed)"
+                    puts "   📱 Checking Messages app for new verification codes..."
                 }
                 
                 catch {
@@ -326,11 +406,15 @@ while {1} {
                     set otp_code [exec osascript $otp_script $prompt_time]
                 } catch_result
                 
-                if {$otp_code != ""} {
-                    puts "\n${GREEN}✅ OTP code received: $otp_code${NC}"
-                    puts "🔑 Submitting authentication code..."
+                if {$otp_code != "" && [string length $otp_code] >= 4} {
+                    puts "\n${GREEN}✅ OTP code detected: $otp_code${NC}"
+                    puts "🔑 Submitting authentication code to VPN server..."
+                    
+                    # Send the OTP code
                     send "$otp_code\r"
                     set otp_submitted 1
+                    
+                    puts "🔄 Waiting for authentication result..."
                     break
                 } else {
                     if {$i < [expr $max_attempts - 1]} {
@@ -340,9 +424,11 @@ while {1} {
                 }
             }
             
-            if {$otp_code == ""} {
-                puts "\n${RED}❌ No OTP code detected after 60 seconds${NC}"
-                puts "📱 Please enter the OTP code manually:"
+            if {$otp_code == "" || [string length $otp_code] < 4} {
+                puts "\n${RED}❌ No valid OTP code detected after 2 minutes${NC}"
+                puts "📱 SMS may not have arrived yet or Messages app access issue"
+                puts ""
+                puts "Please enter the OTP code manually:"
                 interact
                 exit 1
             }
@@ -355,7 +441,7 @@ while {1} {
             exp_continue
         }
         "Negotiation complete" {
-            puts "\n📋 VPN negotiation complete"
+            puts "\n${GREEN}📋 VPN negotiation complete${NC}"
             exp_continue
         }
         "tunnel is up and running" {
@@ -382,7 +468,11 @@ while {1} {
         "Could not authenticate to gateway" {
             puts "\n${RED}❌ Authentication failed${NC}"
             puts "⚠️  Could not authenticate with VPN gateway"
-            puts "⚠️  Check credentials and OTP in config file"
+            puts "ℹ️  Possible causes:"
+            puts "   • Server-side 2FA system may be temporarily unavailable"
+            puts "   • Account may need to be reset by administrator"
+            puts "   • VPN server configuration may have changed"
+            puts "   • Try again in a few minutes or contact IT support"
             catch {exec sudo pkill openfortivpn}
             exit 1
         }
@@ -441,7 +531,8 @@ chmod +x /tmp/forti_expect.exp
 echo "🎬 Starting automated connection process..."
 echo ""
 
-# Run the expect script
+# Note: For password authentication, the expect script will handle sudo prompts
+# Run the expect script which will handle both sudo and VPN authentication
 /tmp/forti_expect.exp "$CONFIG_FILE" "$OTP_SCRIPT"
 
 echo ""

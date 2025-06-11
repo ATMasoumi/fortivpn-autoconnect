@@ -40,7 +40,7 @@ echo "🚀 Starting openfortivpn directly (showing all output)..."
 echo "======================================="
 
 # Run openfortivpn directly with verbose output to see what's happening
-sudo openfortivpn --config="$CONFIG_FILE" --debug=1
+sudo openfortivpn --config="$CONFIG_FILE" -v
 
 echo ""
 echo "🏁 Debug session ended"
