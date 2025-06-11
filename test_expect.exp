@@ -1,0 +1,18 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+puts "Testing expect script..."
+spawn sudo openfortivpn --help
+expect {
+    "Password:" {
+        puts "Got password prompt"
+        interact
+    }
+    eof {
+        puts "Command completed"
+    }
+    timeout {
+        puts "Timeout occurred"
+    }
+}

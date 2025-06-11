@@ -1,0 +1,34 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set config_file [lindex $argv 0]
+
+puts "Testing manual OTP input..."
+
+# Start openfortivpn
+spawn sudo openfortivpn --config=$config_file
+
+expect {
+    "Password:" {
+        puts "Enter sudo password:"
+        interact -o "\r" return
+        send "\r"
+        exp_continue
+    }
+    "Connected to gateway" {
+        puts "Connected to gateway!"
+        exp_continue
+    }
+    "Two-factor authentication token:" {
+        puts "2FA prompt detected! Please enter OTP manually:"
+        interact
+    }
+    timeout {
+        puts "Timeout!"
+        exit 1
+    }
+    eof {
+        puts "Connection ended"
+        exit 1
+    }
+}

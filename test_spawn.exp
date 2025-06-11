@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+
+set timeout 10
+log_user 1
+
+puts "Testing spawn sudo openfortivpn..."
+
+# Try to spawn the command
+puts "About to spawn..."
+spawn sudo openfortivpn --config=/Users/amintorabi/.fortivpn/forticonfig --help
+puts "Spawn command issued"
+
+expect {
+    "Usage:" {
+        puts "✅ SUCCESS: Command spawned and produced output"
+        exit 0
+    }
+    "Password:" {
+        puts "❌ ISSUE: Sudo asking for password - credentials expired"
+        exit 1
+    }
+    timeout {
+        puts "❌ TIMEOUT: Command hung for 10 seconds"
+        exit 1
+    }
+    eof {
+        puts "✅ Command completed"
+        exit 0
+    }
+}

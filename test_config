@@ -1,0 +1,7 @@
+host = bluvpn2.sdb247.com
+port = 4443
+username = a.torabi
+password = NAOMI2020dsd@
+trusted-cert = 158b031d6b64c88794dce9e1fbaf39f51537e7fe9cb8bc3a462c84c164d05ca4
+set-routes = 0
+set-dns = 0
