@@ -64,8 +64,8 @@ version "2.0.1"
 # For a new version X.Y.Z:
 curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/vX.Y.Z.tar.gz | shasum -a 256
 
-# Example for v2.0.2:
-curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/v2.0.2.tar.gz | shasum -a 256
+# Example for v2.0.1:
+curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/v2.0.1.tar.gz | shasum -a 256
 
 # Example for v2.1.0:
 curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/v2.1.0.tar.gz | shasum -a 256
@@ -77,7 +77,7 @@ curl -sL https://github.com/ATMasoumi/fortivpn-autoconnect/archive/v2.1.0.tar.gz
 # save as generate-sha.sh in project root
 
 if [ -z "$1" ]; then
-    echo "Usage: ./generate-sha.sh v2.0.2"
+    echo "Usage: ./generate-sha.sh v2.0.1"
     exit 1
 fi
 

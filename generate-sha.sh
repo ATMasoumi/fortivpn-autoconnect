@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Automated SHA256 generation script for FortiVPN Auto-Connect releases
-# Usage: ./generate-sha.sh v2.0.2
+# Usage: ./generate-sha.sh v2.0.1
 
 set -e
 
@@ -17,7 +17,7 @@ if [ -z "$1" ]; then
     echo -e "${RED}❌ Error: Version tag required${NC}"
     echo ""
     echo -e "${CYAN}Usage:${NC}"
-    echo "  ./generate-sha.sh v2.0.2"
+    echo "  ./generate-sha.sh v2.0.1"
     echo "  ./generate-sha.sh v2.1.0"
     echo ""
     echo -e "${YELLOW}Note: Make sure the tag exists on GitHub before running this script${NC}"
